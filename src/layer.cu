@@ -42,34 +42,27 @@ void Conv1D(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   }
 }
 
-__global__ void Conv1D_Kernel(float *in, float *w, float *b, float *out, size_t s, size_t C, size_t OC, size_t K, size_t os) {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  int j = blockIdx.y * blockDim.y + threadIdx.y;
-  int k_start = threadIdx.z;
+/* [Conv1D CUDA kernel] */
+__global__ void Conv1D_Kernel(float *in, float *w, float *b, float *out, 
+  size_t C, size_t s, size_t OC, size_t K) {
+  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  size_t os = s - K + 1;
 
-  if (i < OC && j < os) {
+  if (i < OC * os) {
+    size_t oc = i / os;  // Output channel index
+    size_t j = i % os;   // Output spatial index
     float val = 0.f;
 
-    for (int k = k_start; k < C; k += blockDim.z) {
-      for (int l = 0; l < K; l++) {
-        val += in[k * s + j + l] * w[i * C * K + k * K + l];
+    for (size_t k = 0; k < C; k++) {
+      for (size_t l = 0; l < K; l++) {
+        val += in[k * s + j + l] * w[oc * C * K + k * K + l];
       }
     }
-
-    __shared__ float shared_sum[16][16];
-    shared_sum[threadIdx.y][threadIdx.x] = val;
-    __syncthreads();
-
-    if (threadIdx.z == 0) {
-      float sum = 0.f;
-      for (int k = 0; k < blockDim.z; k++) {
-        sum += shared_sum[threadIdx.y][threadIdx.x];
-      }
-      out[i * os + j] = sum + b[i];
-    }
+    out[oc * os + j] = val + b[oc];
   }
 }
 
+/* [Conv1D using CUDA] */
 void Conv1D_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   size_t s = in->shape[1];
   size_t C = in->shape[0];
@@ -78,23 +71,31 @@ void Conv1D_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   size_t os = s - K + 1;
 
   float *d_in, *d_w, *d_b, *d_out;
-  CHECK_CUDA(cudaMalloc((void**)&d_in, sizeof(float) * C * s));
-  CHECK_CUDA(cudaMalloc((void**)&d_w, sizeof(float) * OC * C * K));
-  CHECK_CUDA(cudaMalloc((void**)&d_b, sizeof(float) * OC));
-  CHECK_CUDA(cudaMalloc((void**)&d_out, sizeof(float) * OC * os));
 
-  CHECK_CUDA(cudaMemcpy(d_in, in->buf, sizeof(float) * C * s, cudaMemcpyHostToDevice));
-  CHECK_CUDA(cudaMemcpy(d_w, w->buf, sizeof(float) * OC * C * K, cudaMemcpyHostToDevice));
-  CHECK_CUDA(cudaMemcpy(d_b, b->buf, sizeof(float) * OC, cudaMemcpyHostToDevice));
-  CHECK_CUDA(cudaMemset(d_out, 0, sizeof(float) * OC * os)); // 초기화
+  // GPU 메모리 할당
+  CHECK_CUDA(cudaMalloc(&d_in, C * s * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_w, OC * C * K * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_b, OC * sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&d_out, OC * os * sizeof(float)));
 
-  dim3 blockDim(16, 16, 4);
-  dim3 gridDim((OC + blockDim.x - 1) / blockDim.x, (os + blockDim.y - 1) / blockDim.y);
-  Conv1D_Kernel<<<gridDim, blockDim>>>(d_in, d_w, d_b, d_out, s, C, OC, K, os);
+  // GPU로 데이터 복사
+  CHECK_CUDA(cudaMemcpy(d_in, in->buf, C * s * sizeof(float), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_w, w->buf, OC * C * K * sizeof(float), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_b, b->buf, OC * sizeof(float), cudaMemcpyHostToDevice));
+
+  // 블록 및 스레드 설정
+  size_t total_threads = OC * os;
+  size_t block_size = 256;
+  size_t grid_size = (total_threads + block_size - 1) / block_size;
+
+  // CUDA 커널 실행
+  Conv1D_Kernel<<<grid_size, block_size>>>(d_in, d_w, d_b, d_out, C, s, OC, K);
   CHECK_CUDA(cudaDeviceSynchronize());
 
-  CHECK_CUDA(cudaMemcpy(out->buf, d_out, sizeof(float) * OC * os, cudaMemcpyDeviceToHost));
+  // 결과를 CPU로 복사
+  CHECK_CUDA(cudaMemcpy(out->buf, d_out, OC * os * sizeof(float), cudaMemcpyDeviceToHost));
 
+  // GPU 메모리 해제
   CHECK_CUDA(cudaFree(d_in));
   CHECK_CUDA(cudaFree(d_w));
   CHECK_CUDA(cudaFree(d_b));
