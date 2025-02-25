@@ -15,9 +15,9 @@ Tensor::Tensor(const vector<size_t> &shape_) {
   ndim = shape_.size();
   for (size_t i = 0; i < ndim; i++) { shape[i] = shape_[i]; }
   size_t N_ = num_elem();
-  //buf = (float *) calloc(N_, sizeof(float)); // 기존
-  CHECK_CUDA(cudaMallocHost((void**)&buf, sizeof(float) * N_)); // 변경
-  memset(buf, 0, sizeof(float) * N_); // 변경
+  //CHECK_CUDA(cudaMalloc((void**)&buf, sizeof(float) * N_)); // paged - Segmentation fault (core dumped)
+  CHECK_CUDA(cudaMallocHost((void**)&buf, sizeof(float) * N_)); // pinned
+  CHECK_CUDA(cudaMemset(buf, 0, sizeof(float) * N_));
 }
 
 // 생성자: 기존 버퍼 사용
@@ -25,15 +25,15 @@ Tensor::Tensor(const vector<size_t> &shape_, float *buf_) {
   ndim = shape_.size();
   for (size_t i = 0; i < ndim; i++) { shape[i] = shape_[i]; }
   size_t N_ = num_elem();
-  //buf = (float *) malloc(N_ * sizeof(float)); // 기존
-  CHECK_CUDA(cudaMallocHost((void**)&buf, sizeof(float) * N_)); // 변경
-  memcpy(buf, buf_, N_ * sizeof(float));
+  //CHECK_CUDA(cudaMalloc((void**)&buf, sizeof(float) * N_)); // paged - Segmentation fault (core dumped)
+  CHECK_CUDA(cudaMallocHost((void**)&buf, sizeof(float) * N_)); // pinned
+  CHECK_CUDA(cudaMemcpy(buf, buf_, N_ * sizeof(float), cudaMemcpyHostToDevice));
 }
 
 // Tensor 소멸자
 Tensor::~Tensor() {
-  //if (buf != nullptr) free(buf); // 기존
-  if (buf != nullptr) CHECK_CUDA(cudaFreeHost(buf)); // 변경
+  //if (buf != nullptr) CHECK_CUDA(cudaFree(buf)); // paged - Segmentation fault (core dumped)
+  if (buf != nullptr) CHECK_CUDA(cudaFreeHost(buf));
 }
 
 // 텐서의 총 원소 개수를 반환하는 함수
