@@ -201,6 +201,7 @@ void MoE(Activation *in, Parameter *exp0_w, Parameter *exp0_b,
 
   /* 2. Compute the softmax of the gate logits: in [4] -> out [4] */
   Softmax_CUDA(gate_a);
+  gate_a->toCPU();  // linear에서 scaling도 해줘서 해결할 수 있음 (fusion 쓰면 될듯)
 
   /* 3. Compute the expert's output: in [4096] -> out [2048] */
   Linear_CUDA(in, exp0_w, exp0_b, expert0_a);
@@ -263,7 +264,8 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
     MoE(concat_a, moe_exp0_w, moe_exp0_b, moe_exp1_w, moe_exp1_b,
       moe_exp2_w, moe_exp2_b, moe_exp3_w, moe_exp3_b, moe_gate_w,
       moe_gate_b, moe_a);
-
+    
+    // moe_a->toGPU();
     /* in [2048] -> out [1024] */
     Linear_CUDA(moe_a, linear0_w, linear0_b, linear0_a);
     ReLU_CUDA(linear0_a);
@@ -280,7 +282,8 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
       the sentiment, we can simply take the argmax of these probabilities. 
     */
      
-    /* Copy the computation result to the outputs */
-    memcpy(outputs + n * 2, linear2_a->buf, 2 * sizeof(float));
+    /* 최종 결과만 CPU로 복사 */
+    CHECK_CUDA(cudaMemcpy(outputs + n * 2, linear2_a->gbuf, sizeof(float) * 2, cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaGetLastError());
   }
 }

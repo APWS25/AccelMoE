@@ -32,10 +32,15 @@ struct Tensor {
   size_t ndim = 0;
   size_t shape[4] = {1, 1, 1, 1};
   float *buf = nullptr;
+  float *gbuf = nullptr;
 
   Tensor(const vector<size_t> &shape_);
   Tensor(const vector<size_t> &shape_, float *buf_);
   ~Tensor();
+
+  void compare();
+  void toCPU();
+  void toGPU();
 
   size_t num_elem();
 };

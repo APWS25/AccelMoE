@@ -1,4 +1,4 @@
 #!/bin/bash
 
 srun --exclusive --gres=gpu:4 \
-	./main $@
+	./main -n 10 -v $@
