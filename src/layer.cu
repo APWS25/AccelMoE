@@ -100,7 +100,6 @@ void ReLU_CUDA(Tensor *inout) {
   dim3 blockDim = 256;
   dim3 gridDim = (N + 255) / 256;
   ReLU_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N);
-  CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
@@ -146,7 +145,6 @@ void GetMax_CUDA(Tensor *in, Tensor *out) {
   dim3 blockDim = 256;
   dim3 gridDim = (C + 256 - 1) / 256;
   GetMax_Kernel<<<gridDim, blockDim>>>(in->gbuf, out->gbuf, C, s);
-  CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
@@ -198,7 +196,6 @@ void Concat_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4, Tensor *out
   dim3 blockDim = 256;
   dim3 gridDim = (N1 + N2 + N3 + N4 + 256 - 1) / 256;
   Concat_Kernel<<<gridDim, blockDim>>>(in1->gbuf, in2->gbuf, in3->gbuf, in4->gbuf, out->gbuf, N1, N2, N3, N4);
-  CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
@@ -242,7 +239,6 @@ void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   dim3 blockDim = 256;
   dim3 gridDim = (M + 256 - 1) / 256;
   Linear_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, N, M);
-  CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
@@ -341,7 +337,6 @@ void Softmax_CUDA(Tensor *inout) {
   dim3 blockDim = 256;
   dim3 gridDim = (N + 256 - 1) / 256;
   Softmax_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N);
-  CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
@@ -372,7 +367,6 @@ void Scaling_CUDA(Tensor *inout, float s) {
   dim3 blockDim = 256;
   dim3 gridDim = (N + 256 - 1) / 256;
   Scaling_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N, s);
-  CHECK_CUDA(cudaGetLastError());
   cudaDeviceSynchronize();
 }
 
@@ -408,6 +402,5 @@ void Add_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4, Tensor *out) {
   dim3 blockDim = 256;
   dim3 gridDim = (N + 256 - 1) / 256;
   Add_Kernel<<<gridDim, blockDim>>>(in1->gbuf, in2->gbuf, in3->gbuf, in4->gbuf, out->gbuf, N);
-  CHECK_CUDA(cudaGetLastError());
   cudaDeviceSynchronize();
 }
