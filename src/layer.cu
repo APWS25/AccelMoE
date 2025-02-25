@@ -71,8 +71,7 @@ void Conv1D_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
 
   dim3 blockDim = 256;
   dim3 gridDim = ((OC * os) + 256 - 1) / 256;
-  Conv1D_Kernel<<<gridDim, blockDim>>>(in->buf, w->buf, b->buf, out->buf, C, s, OC, K);
-  CHECK_CUDA(cudaGetLastError());
+  Conv1D_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, C, s, OC, K);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
@@ -100,7 +99,7 @@ void ReLU_CUDA(Tensor *inout) {
   size_t N = inout->num_elem();
   dim3 blockDim = 256;
   dim3 gridDim = (N + 255) / 256;
-  ReLU_Kernel<<<gridDim, blockDim>>>(inout->buf, N);
+  ReLU_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N);
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -133,7 +132,7 @@ __global__ void GetMax_Kernel(float *in, float *out, size_t C, size_t s) {
   if (i < C) {
     float max_val = in[i * s];
     for (size_t j = 1; j < s; j++) {
-      max_val = fmaxf(max_val, in[i * s + j]); // CUDA 내장 함수 사용
+      max_val = fmaxf(max_val, in[i * s + j]);
     }
     out[i] = max_val;
   }
@@ -146,7 +145,7 @@ void GetMax_CUDA(Tensor *in, Tensor *out) {
 
   dim3 blockDim = 256;
   dim3 gridDim = (C + 256 - 1) / 256;
-  GetMax_Kernel<<<gridDim, blockDim>>>(in->buf, out->buf, C, s);
+  GetMax_Kernel<<<gridDim, blockDim>>>(in->gbuf, out->gbuf, C, s);
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -198,7 +197,7 @@ void Concat_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4, Tensor *out
 
   dim3 blockDim = 256;
   dim3 gridDim = (N1 + N2 + N3 + N4 + 256 - 1) / 256;
-  Concat_Kernel<<<gridDim, blockDim>>>(in1->buf, in2->buf, in3->buf, in4->buf, out->buf, N1, N2, N3, N4);
+  Concat_Kernel<<<gridDim, blockDim>>>(in1->gbuf, in2->gbuf, in3->gbuf, in4->gbuf, out->gbuf, N1, N2, N3, N4);
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -242,7 +241,7 @@ void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
 
   dim3 blockDim = 256;
   dim3 gridDim = (M + 256 - 1) / 256;
-  Linear_Kernel<<<gridDim, blockDim>>>(in->buf, w->buf, b->buf, out->buf, N, M);
+  Linear_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, N, M);
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -283,56 +282,55 @@ void Softmax(Tensor *inout) {
   for (size_t i = 0; i < N; i++) { inout->buf[i] /= sum; }
 }
 
-/*
-__global__ void Softmax_Kernel(float *buf, size_t N) {
-  __shared__ float max_val;
-  __shared__ float sum;
+// __global__ void Softmax_Kernel(float *buf, size_t N) {
+//   __shared__ float max_val;
+//   __shared__ float sum;
 
-  int tid = threadIdx.x;
-  if (tid == 0) {
-      max_val = -INFINITY;
-      for (size_t i = 0; i < N; i++) {
-          max_val = fmaxf(max_val, buf[i]);
-      }
-  }
-  __syncthreads();
-  if (tid == 0) {
-      sum = 0.0f;
-      for (size_t i = 0; i < N; i++) {
-          buf[i] = expf(buf[i] - max_val);
-          sum += buf[i];
-      }
-  }
-  __syncthreads();
+//   int tid = threadIdx.x;
+//   if (tid == 0) {
+//       max_val = -INFINITY;
+//       for (size_t i = 0; i < N; i++) {
+//           max_val = fmaxf(max_val, buf[i]);
+//       }
+//   }
+//   __syncthreads();
+//   if (tid == 0) {
+//       sum = 0.0f;
+//       for (size_t i = 0; i < N; i++) {
+//           buf[i] = expf(buf[i] - max_val);
+//           sum += buf[i];
+//       }
+//   }
+//   __syncthreads();
 
-  // Step 3: Normalize
-  if (tid == 0) {
-      for (size_t i = 0; i < N; i++) {
-          buf[i] /= sum;
-      }
-  }
-} */
+//   // Step 3: Normalize
+//   if (tid == 0) {
+//       for (size_t i = 0; i < N; i++) {
+//           buf[i] /= sum;
+//       }
+//   }
+// }
 
-__global__ void Softmax_Kernel(float *buf, size_t N) {
+__global__ void Softmax_Kernel(float *gbuf, size_t N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= N) return;
 
   // 1. Find max value (to prevent overflow)
   float max_val = -INFINITY;
   for (size_t i = 0; i < N; i++) {
-    max_val = fmaxf(max_val, buf[i]);
+    max_val = fmaxf(max_val, gbuf[i]);
   }
 
   // 2. Compute exponentials and sum
   float sum = 0.0f;
   for (size_t i = 0; i < N; i++) {
-    buf[i] = expf(buf[i] - max_val);
-    sum += buf[i];
+    gbuf[i] = expf(gbuf[i] - max_val);
+    sum += gbuf[i];
   }
 
   // 3. Normalize
   for (size_t i = 0; i < N; i++) {
-    buf[i] /= sum;
+    gbuf[i] /= sum;
   }
 }
 
@@ -342,7 +340,7 @@ void Softmax_CUDA(Tensor *inout) {
 
   dim3 blockDim = 256;
   dim3 gridDim = (N + 256 - 1) / 256;
-  Softmax_Kernel<<<gridDim, blockDim>>>(inout->buf, N);
+  Softmax_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N);
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -360,10 +358,10 @@ void Scaling(Tensor *inout, float s) {
   }
 }
 
-__global__ void Scaling_Kernel(float *buf, size_t N, float s) {
+__global__ void Scaling_Kernel(float *gbuf, size_t N, float s) {
   int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx < N) {
-      buf[idx] *= s;
+      gbuf[idx] *= s;
   }
 }
 
@@ -373,7 +371,7 @@ void Scaling_CUDA(Tensor *inout, float s) {
   
   dim3 blockDim = 256;
   dim3 gridDim = (N + 256 - 1) / 256;
-  Scaling_Kernel<<<gridDim, blockDim>>>(inout->buf, N, s);
+  Scaling_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N, s);
   CHECK_CUDA(cudaGetLastError());
   cudaDeviceSynchronize();
 }
@@ -405,12 +403,11 @@ __global__ void Add_Kernel(float *in1, float *in2, float *in3, float *in4, float
 
 //MARK: Add_CUDA
 void Add_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4, Tensor *out) {
-  size_t N = in1->shape[0];
-  print()
+  size_t N = in1->shape[0]; // (2048, 1, 1, 1)
 
   dim3 blockDim = 256;
   dim3 gridDim = (N + 256 - 1) / 256;
-  Add_Kernel<<<gridDim, blockDim>>>(in1->buf, in2->buf, in3->buf, in4->buf, out->buf, N);
+  Add_Kernel<<<gridDim, blockDim>>>(in1->gbuf, in2->gbuf, in3->gbuf, in4->gbuf, out->gbuf, N);
   CHECK_CUDA(cudaGetLastError());
   cudaDeviceSynchronize();
 }
