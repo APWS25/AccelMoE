@@ -197,26 +197,26 @@ void MoE(Activation *in, Parameter *exp0_w, Parameter *exp0_b,
          Parameter *gate_w, Parameter *gate_b, Activation *out) {
 
   /* 1. Compute the gate logits: in [4096] -> out [4] */
-  Linear(in, gate_w, gate_b, gate_a);
+  Linear_CUDA(in, gate_w, gate_b, gate_a);
 
   /* 2. Compute the softmax of the gate logits: in [4] -> out [4] */
-  Softmax(gate_a);
+  Softmax_CUDA(gate_a);
 
   /* 3. Compute the expert's output: in [4096] -> out [2048] */
-  Linear(in, exp0_w, exp0_b, expert0_a);
-  Linear(in, exp1_w, exp1_b, expert1_a);
-  Linear(in, exp2_w, exp2_b, expert2_a);
-  Linear(in, exp3_w, exp3_b, expert3_a);
+  Linear_CUDA(in, exp0_w, exp0_b, expert0_a);
+  Linear_CUDA(in, exp1_w, exp1_b, expert1_a);
+  Linear_CUDA(in, exp2_w, exp2_b, expert2_a);
+  Linear_CUDA(in, exp3_w, exp3_b, expert3_a);
 
   /* 4. Scale the expert's output: in [2048] -> out [2048] */
-  Scaling(expert0_a, gate_a->buf[0]);
-  Scaling(expert1_a, gate_a->buf[1]);
-  Scaling(expert2_a, gate_a->buf[2]);
-  Scaling(expert3_a, gate_a->buf[3]);
+  Scaling_CUDA(expert0_a, gate_a->buf[0]);
+  Scaling_CUDA(expert1_a, gate_a->buf[1]);
+  Scaling_CUDA(expert2_a, gate_a->buf[2]);
+  Scaling_CUDA(expert3_a, gate_a->buf[3]);
 
   /* 5. Accumulate the expert's output:
     * in [2048] + [2048] + [2048] + [2048] -> out [2048] */
-  Add(expert0_a, expert1_a, expert2_a, expert3_a, out);
+  Add_CUDA(expert0_a, expert1_a, expert2_a, expert3_a, out);
 }
 
 /* [Model Computation: Sentiment Analysis Task] */
@@ -226,38 +226,38 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
     Tensor *input = new Tensor({4096, SEQ_LEN}, inputs + n * SEQ_LEN * 4096); 
 
     /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 2] */
-    Conv1D(input, conv0_w, conv0_b, conv0_a);
-    ReLU(conv0_a); 
+    Conv1D_CUDA(input, conv0_w, conv0_b, conv0_a);
+    ReLU_CUDA(conv0_a); 
 
     /* in [1024, SEQ_LEN - 2] -> out [1024] */
-    GetMax(conv0_a, pool0_a);
+    GetMax_CUDA(conv0_a, pool0_a);
 
     /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 4] */
-    Conv1D(input, conv1_w, conv1_b, conv1_a);
-    ReLU(conv1_a);
+    Conv1D_CUDA(input, conv1_w, conv1_b, conv1_a);
+    ReLU_CUDA(conv1_a);
 
     /* in [1024, SEQ_LEN - 4] -> out [1024] */
-    GetMax(conv1_a, pool1_a);
+    GetMax_CUDA(conv1_a, pool1_a);
 
     /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 6] */
-    Conv1D(input, conv2_w, conv2_b, conv2_a);
-    ReLU(conv2_a);
+    Conv1D_CUDA(input, conv2_w, conv2_b, conv2_a);
+    ReLU_CUDA(conv2_a);
 
     /* in [1024, SEQ_LEN - 6] -> out [1024] */
-    GetMax(conv2_a, pool2_a);
+    GetMax_CUDA(conv2_a, pool2_a);
 
     /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 8] */
-    Conv1D(input, conv3_w, conv3_b, conv3_a);
-    ReLU(conv3_a);
+    Conv1D_CUDA(input, conv3_w, conv3_b, conv3_a);
+    ReLU_CUDA(conv3_a);
 
     /* in [1024, SEQ_LEN - 8] -> out [1024] */
-    GetMax(conv3_a, pool3_a);
+    GetMax_CUDA(conv3_a, pool3_a);
 
     /* in [1024] +
           [1024] +
           [1024] +
           [1024] -> out [1024 * 4] */
-    Concat(pool0_a, pool1_a, pool2_a, pool3_a, concat_a);
+    Concat_CUDA(pool0_a, pool1_a, pool2_a, pool3_a, concat_a);
 
     /* in [1024 * 4] -> out [2048] */
     MoE(concat_a, moe_exp0_w, moe_exp0_b, moe_exp1_w, moe_exp1_b,
@@ -265,15 +265,15 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
       moe_gate_b, moe_a);
 
     /* in [2048] -> out [1024] */
-    Linear(moe_a, linear0_w, linear0_b, linear0_a);
-    ReLU(linear0_a);
+    Linear_CUDA(moe_a, linear0_w, linear0_b, linear0_a);
+    ReLU_CUDA(linear0_a);
 
     /* in [1024] -> out [512] */
-    Linear(linear0_a, linear1_w, linear1_b, linear1_a);
-    ReLU(linear1_a);
+    Linear_CUDA(linear0_a, linear1_w, linear1_b, linear1_a);
+    ReLU_CUDA(linear1_a);
 
     /* in [512] -> out [2] */
-    Linear(linear1_a, linear2_w, linear2_b, linear2_a);
+    Linear_CUDA(linear1_a, linear2_w, linear2_b, linear2_a);
 
     /* cf) The output 'linear2_a' (shape: [2]) contains the probabilities 
       for each sentiment class (0: negative, 1: positive). To determine 
