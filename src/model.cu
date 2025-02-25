@@ -223,7 +223,7 @@ void MoE(Activation *in, Parameter *exp0_w, Parameter *exp0_b,
 void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
   for (size_t n = 0; n < n_samples; n++) {
     /* Load a sentence from the inputs */
-    Tensor *input = new Tensor({4096, SEQ_LEN}, inputs + n * SEQ_LEN * 4096); 
+    Tensor *input = new Tensor({4096, SEQ_LEN});
 
     /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 2] */
     Conv1D_CUDA(input, conv0_w, conv0_b, conv0_a);
@@ -280,7 +280,8 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
       the sentiment, we can simply take the argmax of these probabilities. 
     */
      
-    /* Copy the computation result to the outputs */
-    memcpy(outputs + n * 2, linear2_a->buf, 2 * sizeof(float));
+    /* 최종 결과만 CPU로 복사 */
+    CHECK_CUDA(cudaMemcpy(outputs + n * 2, linear2_a->buf, sizeof(float) * 2, cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaGetLastError());
   }
 }
