@@ -216,10 +216,12 @@ void MoE(Activation *in, Parameter *exp0_w, Parameter *exp0_b,
     exp3_w, exp3_b, expert3_a);
 
   /* 4. Scale the expert's output: in [2048] -> out [2048] */
-  Scaling_CUDA(expert0_a, gate_a->buf[0]);
-  Scaling_CUDA(expert1_a, gate_a->buf[1]);
-  Scaling_CUDA(expert2_a, gate_a->buf[2]);
-  Scaling_CUDA(expert3_a, gate_a->buf[3]);
+  // Scaling_CUDA(expert0_a, gate_a->buf[0]);
+  // Scaling_CUDA(expert1_a, gate_a->buf[1]);
+  // Scaling_CUDA(expert2_a, gate_a->buf[2]);
+  // Scaling_CUDA(expert3_a, gate_a->buf[3]);
+
+  Scaling_Stream_CUDA(expert0_a, expert1_a, expert2_a, expert3_a, gate_a);
 
   /* 5. Accumulate the expert's output:
     * in [2048] + [2048] + [2048] + [2048] -> out [2048] */

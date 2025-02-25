@@ -453,6 +453,31 @@ void Scaling_CUDA(Tensor *inout, float s) {
   cudaDeviceSynchronize();
 }
 
+
+//MARK: Scaling_Stream_CUDA
+void Scaling_Stream_CUDA(Tensor *expert0_a, Tensor *expert1_a, Tensor *expert2_a, Tensor *expert3_a, Tensor *gate_a) {
+  cudaStream_t s0, s1, s2, s3;
+  cudaStreamCreate(&s0);
+  cudaStreamCreate(&s1);
+  cudaStreamCreate(&s2);
+  cudaStreamCreate(&s3);
+
+  dim3 blockDim = 32;
+  dim3 gridDim = (expert0_a->shape[0] + 32 - 1) / 32;
+
+  Scaling_Kernel<<<gridDim, blockDim, 0, s0>>>(expert0_a->gbuf, expert0_a->shape[0], gate_a->buf[0]);
+  Scaling_Kernel<<<gridDim, blockDim, 0, s1>>>(expert1_a->gbuf, expert1_a->shape[0], gate_a->buf[1]);
+  Scaling_Kernel<<<gridDim, blockDim, 0, s2>>>(expert2_a->gbuf, expert2_a->shape[0], gate_a->buf[2]);
+  Scaling_Kernel<<<gridDim, blockDim, 0, s3>>>(expert3_a->gbuf, expert3_a->shape[0], gate_a->buf[3]);
+
+  CHECK_CUDA(cudaDeviceSynchronize());
+  cudaStreamDestroy(s0);
+  cudaStreamDestroy(s1);
+  cudaStreamDestroy(s2);
+  cudaStreamDestroy(s3);
+}
+
+
 /* (Elemwise) Addition
  * @param [in1] in1: [N]
  * @param [in2] in2: [N]

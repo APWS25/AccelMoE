@@ -39,6 +39,12 @@ void Concat_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4,
 void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out);
 void Softmax_CUDA(Tensor *inout);
 void Scaling_CUDA(Tensor *inout, float s);
+void Scaling_Stream_CUDA(
+    Tensor *expert0_a, 
+    Tensor *expert1_a, 
+    Tensor *expert2_a, 
+    Tensor *expert3_a, 
+    Tensor *gate_a);
 void Add_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4, 
          Tensor *out);
 
