@@ -204,10 +204,16 @@ void MoE(Activation *in, Parameter *exp0_w, Parameter *exp0_b,
   gate_a->toCPU();  // linear에서 scaling도 해줘서 해결할 수 있음 (fusion 쓰면 될듯)
 
   /* 3. Compute the expert's output: in [4096] -> out [2048] */
-  Linear_CUDA(in, exp0_w, exp0_b, expert0_a);
-  Linear_CUDA(in, exp1_w, exp1_b, expert1_a);
-  Linear_CUDA(in, exp2_w, exp2_b, expert2_a);
-  Linear_CUDA(in, exp3_w, exp3_b, expert3_a);
+  // Linear_CUDA(in, exp0_w, exp0_b, expert0_a);
+  // Linear_CUDA(in, exp1_w, exp1_b, expert1_a);
+  // Linear_CUDA(in, exp2_w, exp2_b, expert2_a);
+  // Linear_CUDA(in, exp3_w, exp3_b, expert3_a);
+
+  Linear_Stream_CUDA(in, 
+    exp0_w, exp0_b, expert0_a,
+    exp1_w, exp1_b, expert1_a,
+    exp2_w, exp2_b, expert2_a,
+    exp3_w, exp3_b, expert3_a);
 
   /* 4. Scale the expert's output: in [2048] -> out [2048] */
   Scaling_CUDA(expert0_a, gate_a->buf[0]);
@@ -226,33 +232,46 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
     /* Load a sentence from the inputs */
     Tensor *input = new Tensor({4096, SEQ_LEN}, inputs + n * SEQ_LEN * 4096); 
 
-    /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 2] */
-    Conv1D_CUDA(input, conv0_w, conv0_b, conv0_a);
-    ReLU_CUDA(conv0_a); 
+    // /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 2] */
+    // Conv1D_CUDA(input, conv0_w, conv0_b, conv0_a);
+    // ReLU_CUDA(conv0_a); 
 
-    /* in [1024, SEQ_LEN - 2] -> out [1024] */
-    GetMax_CUDA(conv0_a, pool0_a);
+    // /* in [1024, SEQ_LEN - 2] -> out [1024] */
+    // GetMax_CUDA(conv0_a, pool0_a);
 
-    /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 4] */
-    Conv1D_CUDA(input, conv1_w, conv1_b, conv1_a);
-    ReLU_CUDA(conv1_a);
+    // /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 4] */
+    // Conv1D_CUDA(input, conv1_w, conv1_b, conv1_a);
+    // ReLU_CUDA(conv1_a);
 
-    /* in [1024, SEQ_LEN - 4] -> out [1024] */
-    GetMax_CUDA(conv1_a, pool1_a);
+    // /* in [1024, SEQ_LEN - 4] -> out [1024] */
+    // GetMax_CUDA(conv1_a, pool1_a);
 
-    /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 6] */
-    Conv1D_CUDA(input, conv2_w, conv2_b, conv2_a);
-    ReLU_CUDA(conv2_a);
+    // /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 6] */
+    // Conv1D_CUDA(input, conv2_w, conv2_b, conv2_a);
+    // ReLU_CUDA(conv2_a);
 
-    /* in [1024, SEQ_LEN - 6] -> out [1024] */
-    GetMax_CUDA(conv2_a, pool2_a);
+    // /* in [1024, SEQ_LEN - 6] -> out [1024] */
+    // GetMax_CUDA(conv2_a, pool2_a);
 
-    /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 8] */
-    Conv1D_CUDA(input, conv3_w, conv3_b, conv3_a);
-    ReLU_CUDA(conv3_a);
+    // /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 8] */
+    // Conv1D_CUDA(input, conv3_w, conv3_b, conv3_a);
+    // ReLU_CUDA(conv3_a);
 
-    /* in [1024, SEQ_LEN - 8] -> out [1024] */
-    GetMax_CUDA(conv3_a, pool3_a);
+    // /* in [1024, SEQ_LEN - 8] -> out [1024] */
+    // GetMax_CUDA(conv3_a, pool3_a);
+
+    ConvBlock_Stream_CUDA(
+      input, 
+      conv0_w, conv0_b, conv0_a,
+      conv1_w, conv1_b, conv1_a,
+      conv2_w, conv2_b, conv2_a,
+      conv3_w, conv3_b, conv3_a);
+    
+    GetMax_Stream_CUDA(
+      conv0_a, pool0_a, 
+      conv1_a, pool1_a, 
+      conv2_a, pool2_a, 
+      conv3_a, pool3_a);
 
     /* in [1024] +
           [1024] +
@@ -284,6 +303,5 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
      
     /* 최종 결과만 CPU로 복사 */
     CHECK_CUDA(cudaMemcpy(outputs + n * 2, linear2_a->gbuf, sizeof(float) * 2, cudaMemcpyDeviceToHost));
-    CHECK_CUDA(cudaGetLastError());
   }
 }
