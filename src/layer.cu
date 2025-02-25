@@ -242,21 +242,6 @@ void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
-/* [Advanced Example] Linear in Half precision on CPU */
-void Linear_Half(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
-  size_t N = in->shape[0];
-  size_t M = w->shape[0];
-
-  for (size_t i = 0; i < M; i++) {
-    float val = 0.f;
-    for (size_t j = 0; j < N; j++) {
-      val += static_cast<float>(half_cpu(in->buf[j]) * 
-        half_cpu(w->buf[i * N + j]));
-    }
-    out->buf[i] = val + b->buf[i];
-  }
-}
-
 /* Softmax (w/ Max Trick)
  * @param [in & out] inout: [N]
  * 'N' is the number of elements in the tensor.
