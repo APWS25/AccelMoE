@@ -263,53 +263,21 @@ void Softmax(Tensor *inout) {
   for (size_t i = 0; i < N; i++) { inout->buf[i] /= sum; }
 }
 
-// __global__ void Softmax_Kernel(float *buf, size_t N) {
-//   __shared__ float max_val;
-//   __shared__ float sum;
-
-//   int tid = threadIdx.x;
-//   if (tid == 0) {
-//       max_val = -INFINITY;
-//       for (size_t i = 0; i < N; i++) {
-//           max_val = fmaxf(max_val, buf[i]);
-//       }
-//   }
-//   __syncthreads();
-//   if (tid == 0) {
-//       sum = 0.0f;
-//       for (size_t i = 0; i < N; i++) {
-//           buf[i] = expf(buf[i] - max_val);
-//           sum += buf[i];
-//       }
-//   }
-//   __syncthreads();
-
-//   // Step 3: Normalize
-//   if (tid == 0) {
-//       for (size_t i = 0; i < N; i++) {
-//           buf[i] /= sum;
-//       }
-//   }
-// }
-
 __global__ void Softmax_Kernel(float *gbuf, size_t N) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= N) return;
 
-  // 1. Find max value (to prevent overflow)
   float max_val = -INFINITY;
   for (size_t i = 0; i < N; i++) {
     max_val = fmaxf(max_val, gbuf[i]);
   }
 
-  // 2. Compute exponentials and sum
   float sum = 0.0f;
   for (size_t i = 0; i < N; i++) {
     gbuf[i] = expf(gbuf[i] - max_val);
     sum += gbuf[i];
   }
 
-  // 3. Normalize
   for (size_t i = 0; i < N; i++) {
     gbuf[i] /= sum;
   }
