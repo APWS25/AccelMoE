@@ -17,7 +17,7 @@ void Add(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4,
 
 /* Example of using CUDA kernel */
 void Conv1D_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out);
-void ConvBlock_Stream_CUDA(Tensor *in, 
+void Conv1D_ReLU_Stream_CUDA(Tensor *in, 
     Tensor *conv0_w, Tensor *conv0_b, Tensor *conv0_a,
     Tensor *conv1_w, Tensor *conv1_b, Tensor *conv1_a,
     Tensor *conv2_w, Tensor *conv2_b, Tensor *conv2_a,

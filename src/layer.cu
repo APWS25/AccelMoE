@@ -151,6 +151,7 @@ void GetMax_CUDA(Tensor *in, Tensor *out) {
 //MARK: Conv1D_ReLU_Kernel
 __global__ void Conv1D_ReLU_Kernel(float *in, float *w, float *b, float *out, 
   size_t C, size_t s, size_t OC, size_t K) {
+  
   size_t i = blockIdx.x * blockDim.x + threadIdx.x;
   size_t os = s - K + 1;
 
@@ -169,7 +170,7 @@ __global__ void Conv1D_ReLU_Kernel(float *in, float *w, float *b, float *out,
 }
 
 //MARK: ConvBlock_Stream_CUDA
-void ConvBlock_Stream_CUDA(Tensor *in, 
+void Conv1D_ReLU_Stream_CUDA(Tensor *in, 
   Tensor *conv0_w, Tensor *conv0_b, Tensor *conv0_a,
   Tensor *conv1_w, Tensor *conv1_b, Tensor *conv1_a,
   Tensor *conv2_w, Tensor *conv2_b, Tensor *conv2_a,

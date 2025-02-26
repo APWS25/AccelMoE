@@ -262,7 +262,7 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
     // /* in [1024, SEQ_LEN - 8] -> out [1024] */
     // GetMax_CUDA(conv3_a, pool3_a);
 
-    ConvBlock_Stream_CUDA(
+    Conv1D_ReLU_Stream_CUDA(
       input, 
       conv0_w, conv0_b, conv0_a,
       conv1_w, conv1_b, conv1_a,
