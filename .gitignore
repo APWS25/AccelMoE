@@ -2,3 +2,4 @@
 data/outputs.bin
 main
 *.nsys-rep
+.nfs*

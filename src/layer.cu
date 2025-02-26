@@ -1,6 +1,7 @@
 #include "layer.h"
 //#include <nvToolsExt.h>
 
+#define BLOCK_SIZE 32
 
 /* ReLU
  * @param [in & out] inout: [N]
@@ -353,40 +354,6 @@ void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
-#define BLOCK_SIZE 32
-
-//MARK: L_ReLU_Shared_Kernel
-//NOTE: 작업 중
-// __global__ void Linear_ReLU_Shared_Kernel(float *in, float *we, float *b, float *out, int M, int N) {
-//     // 입력: in (1xN), we (M×N; NxM의 전치), 출력: out (1xM)
-//     // i는 행, j는 열: 하나의 행은 원래 스레드가 처리 중, 지금은 타일마다
-//     int j = blockIdx.x * blockDim.x + threadIdx.x;  // 실제 위치
-//     int gj = blockIdx.x;  // 어떤 블록을 하는지
-//     int lj = threadIdx.x; // 블록 내의 인덱스는 뭔지
-//     if (j >= N) return;
-
-//     __shared__ float inLocal[BLOCK_SIZE];  // 블록 사이즈랑 동일한 공유 메모리
-//     __shared__ float weLocal[BLOCK_SIZE];  // 블록 사이즈랑 동일한 공유 메모리
-
-//     float val = 0.f;                      // 타일마다 저장할 값
-
-//     for (int bk = 0; bk < N; bk += BLOCK_SIZE) {  // 타일 순회
-//         // step 1: 타일 내의 값 공유 메모리 로드
-//         int in_col_idx = bk + lj;                                 // 전체 col = 타일 offset + 타일 내 인덱스
-//         inLocal[lj] = (in_col_idx < N) ? in[in_col_idx] : 0.f;    // 타일 col <- 전체 col 값
-//         int we_col_idx = bk + lj;
-//         weLocal[lj] = (in_col_idx < N) ? we[in_col_idx] : 0.f;
-//         __syncthreads();
-
-//         // step 2: 타일 내의 matmul
-//         for (int lk = 0; lk < BLOCK_SIZE; ++lk) {
-//             val += inLocal[lk] * weLocal[lk];
-//         }
-//         __syncthreads();
-//     }
-//     out[j] = val;
-// }
-
 //MARK: L_ReLU_Kernel
 __global__ void Linear_ReLU_Kernel(float *in, float *w, float *b, float *out, size_t N, size_t M) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -397,6 +364,43 @@ __global__ void Linear_ReLU_Kernel(float *in, float *w, float *b, float *out, si
     val += in[j] * w[i * N + j];
   }
   out[i] = fmaxf(val + b[i], 0.0f);
+}
+
+//MARK: L_ReLU_Shared_Kernel
+//NOTE: 1 by는 아무런 의미가 없다...
+__global__ void Linear_ReLU_Shared_Kernel(float *in, float *we, float *b, float *out, int N, int M) {
+  // 입력: in (1xN), we (M×N; NxM의 전치), 출력: out (1xM)
+  // 원본 코드의 M, K, N == 여기에서 1, N, M
+  int j = blockIdx.x * blockDim.x + threadIdx.x;
+  int gj = blockIdx.x;
+  if (gj * BLOCK_SIZE >= M) return;
+  int lj = threadIdx.x;
+
+  // 쓰레드 블록끼리는 공유 가능한 데이터
+  __shared__ float inLocal[BLOCK_SIZE];
+  __shared__ float weLocal[BLOCK_SIZE][BLOCK_SIZE];
+
+  float val = 0.f;    // 쓰레드마다 개별적으로 저장
+
+  for (int bk = 0; bk < N; bk += BLOCK_SIZE) {
+      // step 1: 타일 내의 값 공유 메모리 로드
+      int in_col_idx = bk + lj;
+      //int we_col_idx = bk + lj;
+      inLocal[lj] = (in_col_idx < N) ? in[in_col_idx] : 0.f;
+      for (int kk = 0; kk < BLOCK_SIZE; ++kk) {
+        weLocal[lj][kk] = we[j * N + bk + kk]; 
+      }
+      __syncthreads();
+      // 각 스레드가 모두 로드 완료
+
+      // step 2: 타일 내의 matmul
+      for (int lk = 0; lk < BLOCK_SIZE; ++lk) {
+          val += inLocal[lk] * weLocal[lj][lk];
+      }
+      __syncthreads();
+  }
+  // 각 스레드가 자신이 담당한 output 원소 하나 계산 완료
+  out[j] = fmaxf(val + b[j], 0.0f);
 }
 
 //MARK: L_ReLU_CUDA
