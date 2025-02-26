@@ -148,6 +148,109 @@ void GetMax_CUDA(Tensor *in, Tensor *out) {
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
+//MARK: Conv1D_ReLU_Kernel
+__global__ void Conv1D_ReLU_Kernel(float *in, float *w, float *b, float *out, 
+  size_t C, size_t s, size_t OC, size_t K) {
+  
+  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  size_t os = s - K + 1;
+
+  if (i < OC * os) {
+    size_t oc = i / os;
+    size_t j = i % os;
+    float val = 0.f;
+
+    for (size_t k = 0; k < C; k++) {
+      for (size_t l = 0; l < K; l++) {
+        val += in[k * s + j + l] * w[oc * C * K + k * K + l];
+      }
+    }
+    out[oc * os + j] = fmaxf(val + b[oc], 0.0f);
+  }
+}
+
+//MARK: ConvBlock_Stream_CUDA
+void Conv1D_ReLU_Stream_CUDA(Tensor *in, 
+  Tensor *conv0_w, Tensor *conv0_b, Tensor *conv0_a,
+  Tensor *conv1_w, Tensor *conv1_b, Tensor *conv1_a,
+  Tensor *conv2_w, Tensor *conv2_b, Tensor *conv2_a,
+  Tensor *conv3_w, Tensor *conv3_b, Tensor *conv3_a) {
+  
+  size_t C = in->shape[0];
+  size_t s = in->shape[1];
+
+  size_t c0_OC = conv0_w->shape[0];
+  size_t c0_K = conv0_w->shape[2];
+  size_t c0_os = s - c0_K + 1;
+
+  size_t c1_OC = conv1_w->shape[0];
+  size_t c1_K = conv1_w->shape[2];
+  size_t c1_os = s - c1_K + 1;
+
+  size_t c2_OC = conv2_w->shape[0];
+  size_t c2_K = conv2_w->shape[2];
+  size_t c2_os = s - c2_K + 1;
+
+  size_t c3_OC = conv3_w->shape[0];
+  size_t c3_K = conv3_w->shape[2];
+  size_t c3_os = s - c3_K + 1;
+
+  cudaStream_t s0, s1, s2, s3;
+  cudaStreamCreate(&s0);
+  cudaStreamCreate(&s1);
+  cudaStreamCreate(&s2);
+  cudaStreamCreate(&s3);
+
+  dim3 blockDim = 32;
+
+  Conv1D_ReLU_Kernel<<<((c0_OC * c0_os) + 32 - 1) / 32, blockDim, 0, s0>>>(in->gbuf, conv0_w->gbuf, conv0_b->gbuf, conv0_a->gbuf, C, s, c0_OC, c0_K);
+  Conv1D_ReLU_Kernel<<<((c1_OC * c1_os) + 32 - 1) / 32, blockDim, 0, s1>>>(in->gbuf, conv1_w->gbuf, conv1_b->gbuf, conv1_a->gbuf, C, s, c1_OC, c1_K);
+  Conv1D_ReLU_Kernel<<<((c2_OC * c2_os) + 32 - 1) / 32, blockDim, 0, s2>>>(in->gbuf, conv2_w->gbuf, conv2_b->gbuf, conv2_a->gbuf, C, s, c2_OC, c2_K);
+  Conv1D_ReLU_Kernel<<<((c3_OC * c3_os) + 32 - 1) / 32, blockDim, 0, s3>>>(in->gbuf, conv3_w->gbuf, conv3_b->gbuf, conv3_a->gbuf, C, s, c3_OC, c3_K);
+  CHECK_CUDA(cudaDeviceSynchronize());
+  cudaStreamDestroy(s0);
+  cudaStreamDestroy(s1);
+  cudaStreamDestroy(s2);
+  cudaStreamDestroy(s3);
+}
+
+//MARK: GetMax_Stream_CUDA
+void GetMax_Stream_CUDA(
+  Tensor *conv0_a, Tensor *pool0_a, 
+  Tensor *conv1_a, Tensor *pool1_a, 
+  Tensor *conv2_a, Tensor *pool2_a, 
+  Tensor *conv3_a, Tensor *pool3_a){
+
+  size_t c0_C = conv0_a->shape[0];
+  size_t c0_s = conv0_a->shape[1];
+
+  size_t c1_C = conv1_a->shape[0];
+  size_t c1_s = conv1_a->shape[1];
+
+  size_t c2_C = conv2_a->shape[0];
+  size_t c2_s = conv2_a->shape[1];
+
+  size_t c3_C = conv3_a->shape[0];
+  size_t c3_s = conv3_a->shape[1];
+
+  cudaStream_t s0, s1, s2, s3;
+  cudaStreamCreate(&s0);
+  cudaStreamCreate(&s1);
+  cudaStreamCreate(&s2);
+  cudaStreamCreate(&s3);
+
+  dim3 blockDim = 32;
+
+  GetMax_Kernel<<<(c0_C + 32 - 1) / 32, blockDim, 0, s0>>>(conv0_a->gbuf, pool0_a->gbuf, c0_C, c0_s);
+  GetMax_Kernel<<<(c1_C + 32 - 1) / 32, blockDim, 1, s1>>>(conv1_a->gbuf, pool1_a->gbuf, c1_C, c1_s);
+  GetMax_Kernel<<<(c2_C + 32 - 1) / 32, blockDim, 2, s2>>>(conv2_a->gbuf, pool2_a->gbuf, c2_C, c2_s);
+  GetMax_Kernel<<<(c3_C + 32 - 1) / 32, blockDim, 3, s3>>>(conv3_a->gbuf, pool3_a->gbuf, c3_C, c3_s);
+  CHECK_CUDA(cudaDeviceSynchronize());
+  cudaStreamDestroy(s0);
+  cudaStreamDestroy(s1);
+  cudaStreamDestroy(s2);
+  cudaStreamDestroy(s3);
+}
 
 /* Concat
  * @param [in1] in1: [N1]
@@ -193,8 +296,8 @@ void Concat_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4, Tensor *out
   size_t N3 = in3->shape[0];
   size_t N4 = in4->shape[0];
 
-  dim3 blockDim = 256;
-  dim3 gridDim = (N1 + N2 + N3 + N4 + 256 - 1) / 256;
+  dim3 blockDim = 32;
+  dim3 gridDim = (N1 + N2 + N3 + N4 + 32 - 1) / 32;
   Concat_Kernel<<<gridDim, blockDim>>>(in1->gbuf, in2->gbuf, in3->gbuf, in4->gbuf, out->gbuf, N1, N2, N3, N4);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -231,15 +334,89 @@ __global__ void Linear_Kernel(float *in, float *w, float *b, float *out, size_t 
   }
 }
 
+// static __global__ void Linear_Kernel(const float *in, const float *w, const float *b, float *out, int M, int N) {
+//   int j = blockIdx.x * blockDim.x + threadIdx.x;
+//   int i = blockIdx.y * blockDim.y + threadIdx.y;
+  
+//   int gj = blockIdx.x;
+//   int gi = blockIdx.y;
+//   if (gi * 32 >= M || gj * 32 >= 1) return;
+  
+//   int lj = threadIdx.x;
+//   int li = threadIdx.y;
+  
+//   __shared__ float wlocal[32][32];
+//   __shared__ float inlocal[32][32];
+  
+//   float c = 0.f;
+//   int row = gi * 32 + li;
+//   int col = gj * 32 + lj;
+
+//   for (int bk = 0; bk < N; bk += 32) {
+//     int w_col = bk + lj;
+//     wlocal[li][lj] = (row < M && w_col < N) ? w[row * N + w_col] : 0.f;
+    
+//     int in_row = bk + li;
+//     inlocal[li][lj] = (in_row < N && col < 1) ? in[in_row] : 0.f;
+    
+//     __syncthreads();
+    
+//     for (int k = 0; k < 32; ++k) {
+//       c += wlocal[li][k] * inlocal[k][lj];
+//     }
+    
+//     __syncthreads();
+//   }
+  
+//   if (i < M && j < 1) {
+//     out[i] = c + b[i];
+//   }
+// }
+
 //MARK: Linear_CUDA
 void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   size_t N = in->shape[0];
   size_t M = w->shape[0];
 
-  dim3 blockDim = 256;
-  dim3 gridDim = (M + 256 - 1) / 256;
+  dim3 blockDim = 32;
+  dim3 gridDim = (M + 32 - 1) / 32;
+
+  // dim3 blockDim(32, 32);
+  // dim3 gridDim((N + 32 - 1) / 32, (M + 32 - 1) / 32);
   Linear_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, N, M);
   CHECK_CUDA(cudaDeviceSynchronize());
+}
+
+//MARK: Linear_Stream_CUDA
+void Linear_Stream_CUDA(Tensor *in, 
+  Tensor *gate_w, Tensor *gate_b, Tensor *gate_a,
+  Tensor *exp0_w, Tensor *exp0_b, Tensor *expert0_a,
+  Tensor *exp1_w, Tensor *exp1_b, Tensor *expert1_a,
+  Tensor *exp2_w, Tensor *exp2_b, Tensor *expert2_a,
+  Tensor *exp3_w, Tensor *exp3_b, Tensor *expert3_a) {
+
+  cudaStream_t s0, s1, s2, s3, s4;
+  cudaStreamCreate(&s0);
+  cudaStreamCreate(&s1);
+  cudaStreamCreate(&s2);
+  cudaStreamCreate(&s3);
+  cudaStreamCreate(&s4);
+
+  dim3 blockDim = 32;
+  dim3 gridDim = (expert0_a->shape[0] + 32 - 1) / 32;
+  
+  Linear_Kernel<<<gridDim, blockDim, 0, s0>>>(in->gbuf, gate_w->gbuf, gate_b->gbuf, gate_a->gbuf, in->shape[0], gate_w->shape[0]);
+  Linear_Kernel<<<gridDim, blockDim, 0, s1>>>(in->gbuf, exp0_w->gbuf, exp0_b->gbuf, expert0_a->gbuf, in->shape[0], exp0_w->shape[0]);
+  Linear_Kernel<<<gridDim, blockDim, 0, s2>>>(in->gbuf, exp1_w->gbuf, exp1_b->gbuf, expert1_a->gbuf, in->shape[0], exp1_w->shape[0]);
+  Linear_Kernel<<<gridDim, blockDim, 0, s3>>>(in->gbuf, exp2_w->gbuf, exp2_b->gbuf, expert2_a->gbuf, in->shape[0], exp2_w->shape[0]);
+  Linear_Kernel<<<gridDim, blockDim, 0, s4>>>(in->gbuf, exp3_w->gbuf, exp3_b->gbuf, expert3_a->gbuf, in->shape[0], exp3_w->shape[0]);
+
+  CHECK_CUDA(cudaDeviceSynchronize());
+  cudaStreamDestroy(s0);
+  cudaStreamDestroy(s1);
+  cudaStreamDestroy(s2);
+  cudaStreamDestroy(s3);
+  cudaStreamDestroy(s4);
 }
 
 /* Softmax (w/ Max Trick)
@@ -287,8 +464,8 @@ __global__ void Softmax_Kernel(float *gbuf, size_t N) {
 void Softmax_CUDA(Tensor *inout) {
   size_t N = inout->shape[0];
 
-  dim3 blockDim = 256;
-  dim3 gridDim = (N + 256 - 1) / 256;
+  dim3 blockDim = 32;
+  dim3 gridDim = (N + 32 - 1) / 32;
   Softmax_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -317,10 +494,33 @@ __global__ void Scaling_Kernel(float *gbuf, size_t N, float s) {
 void Scaling_CUDA(Tensor *inout, float s) {
   size_t N = inout->shape[0];
   
-  dim3 blockDim = 256;
-  dim3 gridDim = (N + 256 - 1) / 256;
+  dim3 blockDim = 32;
+  dim3 gridDim = (N + 32 - 1) / 32;
   Scaling_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N, s);
   cudaDeviceSynchronize();
+}
+
+//MARK: Scaling_Stream_CUDA
+void Scaling_Stream_CUDA(Tensor *expert0_a, Tensor *expert1_a, Tensor *expert2_a, Tensor *expert3_a, Tensor *gate_a) {
+  cudaStream_t s0, s1, s2, s3;
+  cudaStreamCreate(&s0);
+  cudaStreamCreate(&s1);
+  cudaStreamCreate(&s2);
+  cudaStreamCreate(&s3);
+
+  dim3 blockDim = 32;
+  dim3 gridDim = (expert0_a->shape[0] + 32 - 1) / 32;
+
+  Scaling_Kernel<<<gridDim, blockDim, 0, s0>>>(expert0_a->gbuf, expert0_a->shape[0], gate_a->buf[0]);
+  Scaling_Kernel<<<gridDim, blockDim, 0, s1>>>(expert1_a->gbuf, expert1_a->shape[0], gate_a->buf[1]);
+  Scaling_Kernel<<<gridDim, blockDim, 0, s2>>>(expert2_a->gbuf, expert2_a->shape[0], gate_a->buf[2]);
+  Scaling_Kernel<<<gridDim, blockDim, 0, s3>>>(expert3_a->gbuf, expert3_a->shape[0], gate_a->buf[3]);
+
+  CHECK_CUDA(cudaDeviceSynchronize());
+  cudaStreamDestroy(s0);
+  cudaStreamDestroy(s1);
+  cudaStreamDestroy(s2);
+  cudaStreamDestroy(s3);
 }
 
 /* (Elemwise) Addition
@@ -347,13 +547,12 @@ __global__ void Add_Kernel(float *in1, float *in2, float *in3, float *in4, float
   }
 }
 
-
 //MARK: Add_CUDA
 void Add_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4, Tensor *out) {
   size_t N = in1->shape[0]; // (2048, 1, 1, 1)
 
-  dim3 blockDim = 256;
-  dim3 gridDim = (N + 256 - 1) / 256;
+  dim3 blockDim = 32;
+  dim3 gridDim = (N + 32 - 1) / 32;
   Add_Kernel<<<gridDim, blockDim>>>(in1->gbuf, in2->gbuf, in3->gbuf, in4->gbuf, out->gbuf, N);
   cudaDeviceSynchronize();
 }
