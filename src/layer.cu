@@ -69,8 +69,8 @@ void Conv1D_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   size_t K = w->shape[2];
   size_t os = s - K + 1;
 
-  dim3 blockDim = 256;
-  dim3 gridDim = ((OC * os) + 256 - 1) / 256;
+  dim3 blockDim = 32;
+  dim3 gridDim = ((OC * os) + 32 - 1) / 32;
   Conv1D_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, C, s, OC, K);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -97,8 +97,8 @@ __global__ void ReLU_Kernel(float *inout, size_t N) {
 //MARK: ReLU_CUDA
 void ReLU_CUDA(Tensor *inout) {
   size_t N = inout->num_elem();
-  dim3 blockDim = 256;
-  dim3 gridDim = (N + 255) / 256;
+  dim3 blockDim = 32;
+  dim3 gridDim = (N + 32) / 32;
   ReLU_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -142,8 +142,8 @@ void GetMax_CUDA(Tensor *in, Tensor *out) {
   size_t C = in->shape[0];
   size_t s = in->shape[1];
 
-  dim3 blockDim = 256;
-  dim3 gridDim = (C + 256 - 1) / 256;
+  dim3 blockDim = 32;
+  dim3 gridDim = (C + 32 - 1) / 32;
   GetMax_Kernel<<<gridDim, blockDim>>>(in->gbuf, out->gbuf, C, s);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -335,56 +335,6 @@ __global__ void Linear_Kernel(float *in, float *w, float *b, float *out, size_t 
   }
 }
 
-//MARK: L_ReLU_Kernel
-__global__ void Linear_ReLU_Kernel(float *in, float *w, float *b, float *out, size_t N, size_t M) {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < M) {
-    float val = 0.f;
-    for (size_t j = 0; j < N; j++) {
-      val += in[j] * w[i * N + j];
-    }
-    out[i] = fmaxf(val + b[i], 0.0f);
-  }
-}
-
-// static __global__ void Linear_Kernel(const float *in, const float *w, const float *b, float *out, int M, int N) {
-//   int j = blockIdx.x * blockDim.x + threadIdx.x;
-//   int i = blockIdx.y * blockDim.y + threadIdx.y;
-  
-//   int gj = blockIdx.x;
-//   int gi = blockIdx.y;
-//   if (gi * 32 >= M || gj * 32 >= 1) return;
-  
-//   int lj = threadIdx.x;
-//   int li = threadIdx.y;
-  
-//   __shared__ float wlocal[32][32];
-//   __shared__ float inlocal[32][32];
-  
-//   float c = 0.f;
-//   int row = gi * 32 + li;
-//   int col = gj * 32 + lj;
-
-//   for (int bk = 0; bk < N; bk += 32) {
-//     int w_col = bk + lj;
-//     wlocal[li][lj] = (row < M && w_col < N) ? w[row * N + w_col] : 0.f;
-    
-//     int in_row = bk + li;
-//     inlocal[li][lj] = (in_row < N && col < 1) ? in[in_row] : 0.f;
-    
-//     __syncthreads();
-    
-//     for (int k = 0; k < 32; ++k) {
-//       c += wlocal[li][k] * inlocal[k][lj];
-//     }
-    
-//     __syncthreads();
-//   }
-  
-//   if (i < M && j < 1) {
-//     out[i] = c + b[i];
-//   }
-// }
 
 //MARK: Linear_CUDA
 void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
@@ -397,6 +347,32 @@ void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   // dim3 blockDim(32, 32);
   // dim3 gridDim((N + 32 - 1) / 32, (M + 32 - 1) / 32);
   Linear_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, N, M);
+  CHECK_CUDA(cudaDeviceSynchronize());
+}
+
+//MARK: L_ReLU_Kernel
+__global__ void Linear_ReLU_Kernel(float *in, float *w, float *b, float *out, size_t N, size_t M) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < M) {
+    float val = 0.f;
+    for (size_t j = 0; j < N; j++) {
+      val += in[j] * w[i * N + j];
+    }
+    out[i] = fmaxf(val + b[i], 0.0f);
+  }
+}
+
+//MARK: L_ReLU_CUDA
+void Linear_ReLU_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
+  size_t N = in->shape[0];
+  size_t M = w->shape[0];
+
+  dim3 blockDim = 32;
+  dim3 gridDim = (M + 32 - 1) / 32;
+
+  // dim3 blockDim(32, 32);
+  // dim3 gridDim((N + 32 - 1) / 32, (M + 32 - 1) / 32);
+  Linear_ReLU_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, N, M);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 

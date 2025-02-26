@@ -38,6 +38,7 @@ void GetMax_CUDA(Tensor *in, Tensor *out);
 void Concat_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4, 
             Tensor *out);
 void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out);
+void Linear_ReLU_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out);
 void Softmax_CUDA(Tensor *inout);
 void Scaling_CUDA(Tensor *inout, float s);
 void Scaling_Stream_CUDA(
