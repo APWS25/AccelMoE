@@ -148,7 +148,7 @@ void GetMax_CUDA(Tensor *in, Tensor *out) {
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
-//MARK: Conv1D_ReLU_Kernel
+//MARK: C_ReLU_Kernel
 __global__ void Conv1D_ReLU_Kernel(float *in, float *w, float *b, float *out, 
   size_t C, size_t s, size_t OC, size_t K) {
   
@@ -169,7 +169,7 @@ __global__ void Conv1D_ReLU_Kernel(float *in, float *w, float *b, float *out,
   }
 }
 
-//MARK: ConvBlock_Stream_CUDA
+//MARK: C_Stream_CUDA
 void Conv1D_ReLU_Stream_CUDA(Tensor *in, 
   Tensor *conv0_w, Tensor *conv0_b, Tensor *conv0_a,
   Tensor *conv1_w, Tensor *conv1_b, Tensor *conv1_a,
@@ -214,7 +214,7 @@ void Conv1D_ReLU_Stream_CUDA(Tensor *in,
   cudaStreamDestroy(s3);
 }
 
-//MARK: GetMax_Stream_CUDA
+//MARK: G_Stream_CUDA
 void GetMax_Stream_CUDA(
   Tensor *conv0_a, Tensor *pool0_a, 
   Tensor *conv1_a, Tensor *pool1_a, 
@@ -323,6 +323,7 @@ void Linear(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   }
 }
 
+//MARK: Linear_Kernel
 __global__ void Linear_Kernel(float *in, float *w, float *b, float *out, size_t N, size_t M) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < M) {
@@ -331,6 +332,18 @@ __global__ void Linear_Kernel(float *in, float *w, float *b, float *out, size_t 
       val += in[j] * w[i * N + j];
     }
     out[i] = val + b[i];
+  }
+}
+
+//MARK: L_ReLU_Kernel
+__global__ void Linear_ReLU_Kernel(float *in, float *w, float *b, float *out, size_t N, size_t M) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < M) {
+    float val = 0.f;
+    for (size_t j = 0; j < N; j++) {
+      val += in[j] * w[i * N + j];
+    }
+    out[i] = fmaxf(val + b[i], 0.0f);
   }
 }
 
@@ -387,7 +400,7 @@ void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
-//MARK: Linear_Stream_CUDA
+//MARK: L_Stream_CUDA
 void Linear_Stream_CUDA(Tensor *in, 
   Tensor *gate_w, Tensor *gate_b, Tensor *gate_a,
   Tensor *exp0_w, Tensor *exp0_b, Tensor *expert0_a,
@@ -500,7 +513,7 @@ void Scaling_CUDA(Tensor *inout, float s) {
   cudaDeviceSynchronize();
 }
 
-//MARK: Scaling_Stream_CUDA
+//MARK: S_Stream_CUDA
 void Scaling_Stream_CUDA(Tensor *expert0_a, Tensor *expert1_a, Tensor *expert2_a, Tensor *expert3_a, Tensor *gate_a) {
   cudaStream_t s0, s1, s2, s3;
   cudaStreamCreate(&s0);

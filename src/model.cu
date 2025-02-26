@@ -286,7 +286,6 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
       moe_exp2_w, moe_exp2_b, moe_exp3_w, moe_exp3_b, moe_gate_w,
       moe_gate_b, moe_a);
     
-    // moe_a->toGPU();
     /* in [2048] -> out [1024] */
     Linear_CUDA(moe_a, linear0_w, linear0_b, linear0_a);
     ReLU_CUDA(linear0_a);
