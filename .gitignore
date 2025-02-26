@@ -1,3 +1,4 @@
 /obj
 data/outputs.bin
 main
+*.nsys-rep

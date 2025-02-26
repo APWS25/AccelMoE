@@ -27,9 +27,9 @@ Tensor::Tensor(const vector<size_t> &shape_, float *buf_) {
   ndim = shape_.size();
   for (size_t i = 0; i < ndim; i++) { shape[i] = shape_[i]; }
   size_t N_ = num_elem();
-  // CPU
-  CHECK_CUDA(cudaMallocHost((void**)&buf, sizeof(float) * N_)); // pinned
-  memcpy(buf, buf_, N_ * sizeof(float));
+  // CPU - 디버깅 용
+  // CHECK_CUDA(cudaMallocHost((void**)&buf, sizeof(float) * N_)); // pinned
+  // memcpy(buf, buf_, N_ * sizeof(float));
   // GPU
   CHECK_CUDA(cudaMalloc((void**)&gbuf, sizeof(float) * N_)); 
   CHECK_CUDA(cudaMemcpy(gbuf, buf_, N_ * sizeof(float), cudaMemcpyHostToDevice));
