@@ -334,6 +334,45 @@ __global__ void Linear_Kernel(float *in, float *w, float *b, float *out, size_t 
   }
 }
 
+// static __global__ void Linear_Kernel(const float *in, const float *w, const float *b, float *out, int M, int N) {
+//   int j = blockIdx.x * blockDim.x + threadIdx.x;
+//   int i = blockIdx.y * blockDim.y + threadIdx.y;
+  
+//   int gj = blockIdx.x;
+//   int gi = blockIdx.y;
+//   if (gi * 32 >= M || gj * 32 >= 1) return;
+  
+//   int lj = threadIdx.x;
+//   int li = threadIdx.y;
+  
+//   __shared__ float wlocal[32][32];
+//   __shared__ float inlocal[32][32];
+  
+//   float c = 0.f;
+//   int row = gi * 32 + li;
+//   int col = gj * 32 + lj;
+
+//   for (int bk = 0; bk < N; bk += 32) {
+//     int w_col = bk + lj;
+//     wlocal[li][lj] = (row < M && w_col < N) ? w[row * N + w_col] : 0.f;
+    
+//     int in_row = bk + li;
+//     inlocal[li][lj] = (in_row < N && col < 1) ? in[in_row] : 0.f;
+    
+//     __syncthreads();
+    
+//     for (int k = 0; k < 32; ++k) {
+//       c += wlocal[li][k] * inlocal[k][lj];
+//     }
+    
+//     __syncthreads();
+//   }
+  
+//   if (i < M && j < 1) {
+//     out[i] = c + b[i];
+//   }
+// }
+
 //MARK: Linear_CUDA
 void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   size_t N = in->shape[0];
@@ -341,36 +380,43 @@ void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
 
   dim3 blockDim = 32;
   dim3 gridDim = (M + 32 - 1) / 32;
+
+  // dim3 blockDim(32, 32);
+  // dim3 gridDim((N + 32 - 1) / 32, (M + 32 - 1) / 32);
   Linear_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, N, M);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
 //MARK: Linear_Stream_CUDA
 void Linear_Stream_CUDA(Tensor *in, 
+  Tensor *gate_w, Tensor *gate_b, Tensor *gate_a,
   Tensor *exp0_w, Tensor *exp0_b, Tensor *expert0_a,
   Tensor *exp1_w, Tensor *exp1_b, Tensor *expert1_a,
   Tensor *exp2_w, Tensor *exp2_b, Tensor *expert2_a,
   Tensor *exp3_w, Tensor *exp3_b, Tensor *expert3_a) {
 
-  cudaStream_t s0, s1, s2, s3;
+  cudaStream_t s0, s1, s2, s3, s4;
   cudaStreamCreate(&s0);
   cudaStreamCreate(&s1);
   cudaStreamCreate(&s2);
   cudaStreamCreate(&s3);
+  cudaStreamCreate(&s4);
 
   dim3 blockDim = 32;
   dim3 gridDim = (expert0_a->shape[0] + 32 - 1) / 32;
-
-  Linear_Kernel<<<gridDim, blockDim, 0, s0>>>(in->gbuf, exp0_w->gbuf, exp0_b->gbuf, expert0_a->gbuf, in->shape[0], exp0_w->shape[0]);
-  Linear_Kernel<<<gridDim, blockDim, 0, s1>>>(in->gbuf, exp1_w->gbuf, exp1_b->gbuf, expert1_a->gbuf, in->shape[0], exp1_w->shape[0]);
-  Linear_Kernel<<<gridDim, blockDim, 0, s2>>>(in->gbuf, exp2_w->gbuf, exp2_b->gbuf, expert2_a->gbuf, in->shape[0], exp2_w->shape[0]);
-  Linear_Kernel<<<gridDim, blockDim, 0, s3>>>(in->gbuf, exp3_w->gbuf, exp3_b->gbuf, expert3_a->gbuf, in->shape[0], exp3_w->shape[0]);
+  
+  Linear_Kernel<<<gridDim, blockDim, 0, s0>>>(in->gbuf, gate_w->gbuf, gate_b->gbuf, gate_a->gbuf, in->shape[0], gate_w->shape[0]);
+  Linear_Kernel<<<gridDim, blockDim, 0, s1>>>(in->gbuf, exp0_w->gbuf, exp0_b->gbuf, expert0_a->gbuf, in->shape[0], exp0_w->shape[0]);
+  Linear_Kernel<<<gridDim, blockDim, 0, s2>>>(in->gbuf, exp1_w->gbuf, exp1_b->gbuf, expert1_a->gbuf, in->shape[0], exp1_w->shape[0]);
+  Linear_Kernel<<<gridDim, blockDim, 0, s3>>>(in->gbuf, exp2_w->gbuf, exp2_b->gbuf, expert2_a->gbuf, in->shape[0], exp2_w->shape[0]);
+  Linear_Kernel<<<gridDim, blockDim, 0, s4>>>(in->gbuf, exp3_w->gbuf, exp3_b->gbuf, expert3_a->gbuf, in->shape[0], exp3_w->shape[0]);
 
   CHECK_CUDA(cudaDeviceSynchronize());
   cudaStreamDestroy(s0);
   cudaStreamDestroy(s1);
   cudaStreamDestroy(s2);
   cudaStreamDestroy(s3);
+  cudaStreamDestroy(s4);
 }
 
 /* Softmax (w/ Max Trick)
@@ -454,7 +500,6 @@ void Scaling_CUDA(Tensor *inout, float s) {
   cudaDeviceSynchronize();
 }
 
-
 //MARK: Scaling_Stream_CUDA
 void Scaling_Stream_CUDA(Tensor *expert0_a, Tensor *expert1_a, Tensor *expert2_a, Tensor *expert3_a, Tensor *gate_a) {
   cudaStream_t s0, s1, s2, s3;
@@ -477,7 +522,6 @@ void Scaling_Stream_CUDA(Tensor *expert0_a, Tensor *expert1_a, Tensor *expert2_a
   cudaStreamDestroy(s2);
   cudaStreamDestroy(s3);
 }
-
 
 /* (Elemwise) Addition
  * @param [in1] in1: [N]
@@ -502,7 +546,6 @@ __global__ void Add_Kernel(float *in1, float *in2, float *in3, float *in4, float
       out[idx] = in1[idx] + in2[idx] + in3[idx] + in4[idx];
   }
 }
-
 
 //MARK: Add_CUDA
 void Add_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4, Tensor *out) {

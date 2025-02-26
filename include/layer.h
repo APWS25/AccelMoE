@@ -28,6 +28,7 @@ void GetMax_Stream_CUDA(
     Tensor *conv2_a, Tensor *pool2_a, 
     Tensor *conv3_a, Tensor *pool3_a);
 void Linear_Stream_CUDA(Tensor *in, 
+    Tensor *gate_w, Tensor *gate_b, Tensor *gate_a,
     Tensor *exp0_w, Tensor *exp0_b, Tensor *expert0_a,
     Tensor *exp1_w, Tensor *exp1_b, Tensor *expert1_a,
     Tensor *exp2_w, Tensor *exp2_b, Tensor *expert2_a,

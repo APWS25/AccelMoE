@@ -197,23 +197,23 @@ void MoE(Activation *in, Parameter *exp0_w, Parameter *exp0_b,
          Parameter *gate_w, Parameter *gate_b, Activation *out) {
 
   /* 1. Compute the gate logits: in [4096] -> out [4] */
-  Linear_CUDA(in, gate_w, gate_b, gate_a);
-
-  /* 2. Compute the softmax of the gate logits: in [4] -> out [4] */
-  Softmax_CUDA(gate_a);
-  gate_a->toCPU();  // linear에서 scaling도 해줘서 해결할 수 있음 (fusion 쓰면 될듯)
-
   /* 3. Compute the expert's output: in [4096] -> out [2048] */
+  // Linear_CUDA(in, gate_w, gate_b, gate_a);
   // Linear_CUDA(in, exp0_w, exp0_b, expert0_a);
   // Linear_CUDA(in, exp1_w, exp1_b, expert1_a);
   // Linear_CUDA(in, exp2_w, exp2_b, expert2_a);
   // Linear_CUDA(in, exp3_w, exp3_b, expert3_a);
 
   Linear_Stream_CUDA(in, 
+    gate_w, gate_b, gate_a,
     exp0_w, exp0_b, expert0_a,
     exp1_w, exp1_b, expert1_a,
     exp2_w, exp2_b, expert2_a,
     exp3_w, exp3_b, expert3_a);
+
+  /* 2. Compute the softmax of the gate logits: in [4] -> out [4] */
+  Softmax_CUDA(gate_a);
+  gate_a->toCPU();  // linear에서 scaling도 해줘서 해결할 수 있음 (fusion 쓰면 될듯)
 
   /* 4. Scale the expert's output: in [2048] -> out [2048] */
   // Scaling_CUDA(expert0_a, gate_a->buf[0]);
