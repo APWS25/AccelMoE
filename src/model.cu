@@ -146,7 +146,7 @@ void alloc_activations() {
   pool2_a = new Activation({BATCH_SIZE, 1024});
   conv3_a = new Activation({BATCH_SIZE, 1024, SEQ_LEN - 8});
   pool3_a = new Activation({BATCH_SIZE, 1024});
-  concat_a = new Activation({4096});
+  concat_a = new Activation({BATCH_SIZE, 4096});
   gate_a = new Activation({4}); 
   topk_val_a = new Activation({2});
   expert0_a = new Activation({2048});
@@ -238,20 +238,18 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
 
   Tensor *moe_a_batch = new Tensor({BATCH_SIZE, 2048});
 
+  Concat_CUDA(pool0_a, pool1_a, pool2_a, pool3_a, concat_a);
+
   for (size_t n = 0; n < n_samples; n++) {
-    Tensor *tmp_pool0_a = new Tensor({1024}, pool0_a->gbuf + n * 1024);
-    Tensor *tmp_pool1_a = new Tensor({1024}, pool1_a->gbuf + n * 1024);
-    Tensor *tmp_pool2_a = new Tensor({1024}, pool2_a->gbuf + n * 1024);
-    Tensor *tmp_pool3_a = new Tensor({1024}, pool3_a->gbuf + n * 1024);
-  
-    /* in [1024] +
-          [1024] +
-          [1024] +
-          [1024] -> out [1024 * 4] */
-    Concat_CUDA(tmp_pool0_a, tmp_pool1_a, tmp_pool2_a, tmp_pool3_a, concat_a);
+    // Tensor *tmp_pool0_a = new Tensor({1024}, pool0_a->gbuf + n * 1024);
+    // Tensor *tmp_pool1_a = new Tensor({1024}, pool1_a->gbuf + n * 1024);
+    // Tensor *tmp_pool2_a = new Tensor({1024}, pool2_a->gbuf + n * 1024);
+    // Tensor *tmp_pool3_a = new Tensor({1024}, pool3_a->gbuf + n * 1024);
+
+    Tensor *temp_concat_a = new Tensor({4096}, concat_a->gbuf + n * 4096);
   
     /* in [1024 * 4] -> out [2048] */
-    MoE(concat_a, moe_exp0_w, moe_exp0_b, moe_exp1_w, moe_exp1_b,
+    MoE(temp_concat_a, moe_exp0_w, moe_exp0_b, moe_exp1_w, moe_exp1_b,
       moe_exp2_w, moe_exp2_b, moe_exp3_w, moe_exp3_b, moe_gate_w,
       moe_gate_b, moe_a);
     

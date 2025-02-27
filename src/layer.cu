@@ -318,24 +318,51 @@ void Concat(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4,
 }
 
 // MARK: Concat_Kernel
-__global__ void Concat_Kernel(float *in1, float *in2, float *in3, float *in4, float *out, size_t N1, size_t N2, size_t N3, size_t N4) {
+// __global__ void Concat_Kernel(float *in1, float *in2, float *in3, float *in4, float *out, size_t N1, size_t N2, size_t N3, size_t N4) {
+//   int i = blockIdx.x * blockDim.x + threadIdx.x;
+//   if (i < N1) out[i] = in1[i];
+//   else if (i < N1 + N2) out[i] = in2[i - N1];
+//   else if (i < N1 + N2 + N3) out[i] = in3[i - (N1 + N2)];
+//   else if (i < N1 + N2 + N3 + N4) out[i] = in4[i - (N1 + N2 + N3)];
+// }
+
+__global__ void Concat_Batch_Kernel(float *in1, float *in2, float *in3, float *in4, float *out, size_t B, size_t N1, size_t N2, size_t N3, size_t N4) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < N1) out[i] = in1[i];
-  else if (i < N1 + N2) out[i] = in2[i - N1];
-  else if (i < N1 + N2 + N3) out[i] = in3[i - (N1 + N2)];
-  else if (i < N1 + N2 + N3 + N4) out[i] = in4[i - (N1 + N2 + N3)];
+  if (i >= B * (N1 + N2 + N3 + N4)) return;
+
+  if (i <  B * N1){
+    size_t bi = i / N1;
+    size_t li = i % N1;
+    out[bi * (N1 + N2 + N3 + N4) + li] = in1[i];
+  }
+  else if (i < B * (N1 + N2)){
+    size_t bi = (i - (B * N1)) / N2;
+    size_t li = (i - (B * N1)) % N2;
+    out[bi * (N1 + N2 + N3 + N4) + N1 + li] = in2[i - B * N1];
+  }
+  else if (i < B * (N1 + N2 + N3)) {
+    size_t bi = (i - (B * (N1 + N2))) / N3;
+    size_t li = (i - (B * (N1 + N2))) % N3;
+    out[bi * (N1 + N2 + N3 + N4) + N1 + N2 + li] = in3[i - B * (N1 + N2)];
+  }
+  else if (i < B * (N1 + N2 + N3 + N4)){
+    size_t bi = (i - (B * (N1 + N2 + N3))) / N4;
+    size_t li = (i - (B * (N1 + N2 + N3))) % N4;
+    out[bi * (N1 + N2 + N3 + N4) + N1 + N2 + N3 +li] = in4[i - B * (N1 + N2 + N3)];
+  }
 }
 
 //MARK: C_B_CUDA
 void Concat_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4, Tensor *out) {
-  size_t N1 = in1->shape[0];
-  size_t N2 = in2->shape[0];
-  size_t N3 = in3->shape[0];
-  size_t N4 = in4->shape[0];
+  size_t B = in1->shape[0];
+  size_t N1 = in1->shape[1];
+  size_t N2 = in2->shape[1];
+  size_t N3 = in3->shape[1];
+  size_t N4 = in4->shape[1];
 
   dim3 blockDim = 32;
-  dim3 gridDim = (N1 + N2 + N3 + N4 + 32 - 1) / 32;
-  Concat_Kernel<<<gridDim, blockDim>>>(in1->gbuf, in2->gbuf, in3->gbuf, in4->gbuf, out->gbuf, N1, N2, N3, N4);
+  dim3 gridDim = (B * (N1 + N2 + N3 + N4) + 32 - 1) / 32;
+  Concat_Batch_Kernel<<<gridDim, blockDim>>>(in1->gbuf, in2->gbuf, in3->gbuf, in4->gbuf, out->gbuf, B, N1, N2, N3, N4);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
