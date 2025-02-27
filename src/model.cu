@@ -4,6 +4,8 @@
 #include "model.h"
 //#include <nvToolsExt.h>
 
+#define BATCH_SIZE 16
+
 
 /* [Model Parameters]
  * _w: Weight parameter
@@ -136,14 +138,14 @@ Activation *moe_a;
 Activation *linear0_a, *linear1_a, *linear2_a;
 
 void alloc_activations() {
-  conv0_a = new Activation({1024, SEQ_LEN - 2});
-  pool0_a = new Activation({1024});
-  conv1_a = new Activation({1024, SEQ_LEN - 4});
-  pool1_a = new Activation({1024});
-  conv2_a = new Activation({1024, SEQ_LEN - 6});
-  pool2_a = new Activation({1024});
-  conv3_a = new Activation({1024, SEQ_LEN - 8});
-  pool3_a = new Activation({1024});
+  conv0_a = new Activation({BATCH_SIZE, 1024, SEQ_LEN - 2});
+  pool0_a = new Activation({BATCH_SIZE, 1024});
+  conv1_a = new Activation({BATCH_SIZE, 1024, SEQ_LEN - 4});
+  pool1_a = new Activation({BATCH_SIZE, 1024});
+  conv2_a = new Activation({BATCH_SIZE, 1024, SEQ_LEN - 6});
+  pool2_a = new Activation({BATCH_SIZE, 1024});
+  conv3_a = new Activation({BATCH_SIZE, 1024, SEQ_LEN - 8});
+  pool3_a = new Activation({BATCH_SIZE, 1024});
   concat_a = new Activation({4096});
   gate_a = new Activation({4}); 
   topk_val_a = new Activation({2});
@@ -197,137 +199,70 @@ void MoE(Activation *in, Parameter *exp0_w, Parameter *exp0_b,
          Parameter *exp2_b, Parameter *exp3_w, Parameter *exp3_b,
          Parameter *gate_w, Parameter *gate_b, Activation *out) {
 
-  /* 1. Compute the gate logits: in [4096] -> out [4] */
-  /* 3. Compute the expert's output: in [4096] -> out [2048] */
-  // Linear_CUDA(in, gate_w, gate_b, gate_a);
-  // Linear_CUDA(in, exp0_w, exp0_b, expert0_a);
-  // Linear_CUDA(in, exp1_w, exp1_b, expert1_a);
-  // Linear_CUDA(in, exp2_w, exp2_b, expert2_a);
-  // Linear_CUDA(in, exp3_w, exp3_b, expert3_a);
-
-  //nvtxRangePush("Linear_Stream_CUDA");
   Linear_Stream_CUDA(in, 
     gate_w, gate_b, gate_a,
     exp0_w, exp0_b, expert0_a,
     exp1_w, exp1_b, expert1_a,
     exp2_w, exp2_b, expert2_a,
     exp3_w, exp3_b, expert3_a);
-  //nvtxRangePop();
 
   /* 2. Compute the softmax of the gate logits: in [4] -> out [4] */
-  //nvtxRangePush("Softmax_CUDA");
   Softmax_CUDA(gate_a);
   gate_a->toCPU();  // linear에서 scaling도 해줘서 해결할 수 있음 (fusion 쓰면 될듯)
-  //nvtxRangePop();
 
-  /* 4. Scale the expert's output: in [2048] -> out [2048] */
-  // Scaling_CUDA(expert0_a, gate_a->buf[0]);
-  // Scaling_CUDA(expert1_a, gate_a->buf[1]);
-  // Scaling_CUDA(expert2_a, gate_a->buf[2]);
-  // Scaling_CUDA(expert3_a, gate_a->buf[3]);
-
-  //nvtxRangePush("Scaling_Stream_CUDA");
   Scaling_Stream_CUDA(expert0_a, expert1_a, expert2_a, expert3_a, gate_a);
-  //nvtxRangePop();
 
   /* 5. Accumulate the expert's output:
     * in [2048] + [2048] + [2048] + [2048] -> out [2048] */
-  //nvtxRangePush("Add_CUDA");
   Add_CUDA(expert0_a, expert1_a, expert2_a, expert3_a, out);
-  //nvtxRangePop();
 }
 
 /* [Model Computation: Sentiment Analysis Task] */
 void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
+  /* Load a sentence from the inputs */
+  Tensor *input = new Tensor({n_samples, 4096, SEQ_LEN}, inputs); // 한번에 전달한다.
+  // Tensor *input = new Tensor({4096, SEQ_LEN}, inputs + n * SEQ_LEN * 4096); 
+
+  Conv1D_ReLU_Stream_CUDA(
+    input, 
+    conv0_w, conv0_b, conv0_a,
+    conv1_w, conv1_b, conv1_a,
+    conv2_w, conv2_b, conv2_a,
+    conv3_w, conv3_b, conv3_a);
+  
+  GetMax_Stream_CUDA(
+    conv0_a, pool0_a, 
+    conv1_a, pool1_a, 
+    conv2_a, pool2_a, 
+    conv3_a, pool3_a);
+
   for (size_t n = 0; n < n_samples; n++) {
-    /* Load a sentence from the inputs */
-    //nvtxRangePush("Input_Tensor");
-    Tensor *input = new Tensor({4096, SEQ_LEN}, inputs + n * SEQ_LEN * 4096); 
-    //nvtxRangePop();
-
-    // /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 2] */
-    // Conv1D_CUDA(input, conv0_w, conv0_b, conv0_a);
-    // ReLU_CUDA(conv0_a); 
-
-    // /* in [1024, SEQ_LEN - 2] -> out [1024] */
-    // GetMax_CUDA(conv0_a, pool0_a);
-
-    // /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 4] */
-    // Conv1D_CUDA(input, conv1_w, conv1_b, conv1_a);
-    // ReLU_CUDA(conv1_a);
-
-    // /* in [1024, SEQ_LEN - 4] -> out [1024] */
-    // GetMax_CUDA(conv1_a, pool1_a);
-
-    // /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 6] */
-    // Conv1D_CUDA(input, conv2_w, conv2_b, conv2_a);
-    // ReLU_CUDA(conv2_a);
-
-    // /* in [1024, SEQ_LEN - 6] -> out [1024] */
-    // GetMax_CUDA(conv2_a, pool2_a);
-
-    // /* in [4096, SEQ_LEN] -> out [1024, SEQ_LEN - 8] */
-    // Conv1D_CUDA(input, conv3_w, conv3_b, conv3_a);
-    // ReLU_CUDA(conv3_a);
-
-    // /* in [1024, SEQ_LEN - 8] -> out [1024] */
-    // GetMax_CUDA(conv3_a, pool3_a);
-
-    //nvtxRangePush("Conv1D_ReLU_Stream_CUDA");
-    Conv1D_ReLU_Stream_CUDA(
-      input, 
-      conv0_w, conv0_b, conv0_a,
-      conv1_w, conv1_b, conv1_a,
-      conv2_w, conv2_b, conv2_a,
-      conv3_w, conv3_b, conv3_a);
-    //nvtxRangePop();
-    
-    //nvtxRangePush("GetMax_Stream_CUDA");
-    GetMax_Stream_CUDA(
-      conv0_a, pool0_a, 
-      conv1_a, pool1_a, 
-      conv2_a, pool2_a, 
-      conv3_a, pool3_a);
-    //nvtxRangePop();
-
+    Tensor *tmp_pool0_a = new Tensor({1024}, pool0_a->gbuf + n * 1024);
+    Tensor *tmp_pool1_a = new Tensor({1024}, pool1_a->gbuf + n * 1024);
+    Tensor *tmp_pool2_a = new Tensor({1024}, pool2_a->gbuf + n * 1024);
+    Tensor *tmp_pool3_a = new Tensor({1024}, pool3_a->gbuf + n * 1024);
+  
     /* in [1024] +
           [1024] +
           [1024] +
           [1024] -> out [1024 * 4] */
-    //nvtxRangePush("Concat_CUDA");
-    Concat_CUDA(pool0_a, pool1_a, pool2_a, pool3_a, concat_a);
-    //nvtxRangePop();
-
+    Concat_CUDA(tmp_pool0_a, tmp_pool1_a, tmp_pool2_a, tmp_pool3_a, concat_a);
+  
     /* in [1024 * 4] -> out [2048] */
     MoE(concat_a, moe_exp0_w, moe_exp0_b, moe_exp1_w, moe_exp1_b,
       moe_exp2_w, moe_exp2_b, moe_exp3_w, moe_exp3_b, moe_gate_w,
       moe_gate_b, moe_a);
     
     /* in [2048] -> out [1024] */
-    //nvtxRangePush("Linear_ReLU_CUDA");
     Linear_ReLU_CUDA(moe_a, linear0_w, linear0_b, linear0_a);
-    //nvtxRangePop();
-    // ReLU_CUDA(linear0_a);
-
+  
     /* in [1024] -> out [512] */
-    //nvtxRangePush("Linear_ReLU_CUDA");
     Linear_ReLU_CUDA(linear0_a, linear1_w, linear1_b, linear1_a);
-    //nvtxRangePop();
-    // ReLU_CUDA(linear1_a);
-
+  
     /* in [512] -> out [2] */
-    //nvtxRangePush("Linear_CUDA");
     Linear_CUDA(linear1_a, linear2_w, linear2_b, linear2_a);
-    //nvtxRangePop();
 
-    /* cf) The output 'linear2_a' (shape: [2]) contains the probabilities 
-      for each sentiment class (0: negative, 1: positive). To determine 
-      the sentiment, we can simply take the argmax of these probabilities. 
-    */
-     
-    /* 최종 결과만 CPU로 복사 */
-    //nvtxRangePush("Output_Tensor");
+    //CHECK_CUDA(cudaMemcpy(outputs, linear2_a->gbuf, sizeof(float) * (n_samples * 2), cudaMemcpyDeviceToHost));
     CHECK_CUDA(cudaMemcpy(outputs + n * 2, linear2_a->gbuf, sizeof(float) * 2, cudaMemcpyDeviceToHost));
-    //nvtxRangePop();
   }
 }
