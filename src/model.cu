@@ -4,7 +4,7 @@
 #include "model.h"
 //#include <nvToolsExt.h>
 
-#define BATCH_SIZE 16
+#define BATCH_SIZE 32
 
 
 /* [Model Parameters]
@@ -147,13 +147,13 @@ void alloc_activations() {
   conv3_a = new Activation({BATCH_SIZE, 1024, SEQ_LEN - 8});
   pool3_a = new Activation({BATCH_SIZE, 1024});
   concat_a = new Activation({BATCH_SIZE, 4096});
-  gate_a = new Activation({4}); 
-  topk_val_a = new Activation({2});
-  expert0_a = new Activation({2048});
-  expert1_a = new Activation({2048});
-  expert2_a = new Activation({2048});
-  expert3_a = new Activation({2048});
-  moe_a = new Activation({2048});
+  gate_a = new Activation({BATCH_SIZE, 4}); 
+  topk_val_a = new Activation({BATCH_SIZE, 2});
+  expert0_a = new Activation({BATCH_SIZE, 2048});
+  expert1_a = new Activation({BATCH_SIZE, 2048});
+  expert2_a = new Activation({BATCH_SIZE, 2048});
+  expert3_a = new Activation({BATCH_SIZE, 2048});
+  moe_a = new Activation({BATCH_SIZE, 2048});
   linear0_a = new Activation({BATCH_SIZE, 1024});
   linear1_a = new Activation({BATCH_SIZE, 512});
   linear2_a = new Activation({BATCH_SIZE, 2});
@@ -194,10 +194,13 @@ void free_activations() {
  * @param [in11] gate_b: [4]
  * @param [out]     out: [2048]
  */
-void MoE(Activation *in, Parameter *exp0_w, Parameter *exp0_b,
-         Parameter *exp1_w, Parameter *exp1_b, Parameter *exp2_w,
-         Parameter *exp2_b, Parameter *exp3_w, Parameter *exp3_b,
-         Parameter *gate_w, Parameter *gate_b, Activation *out) {
+void MoE(Activation *in, 
+          Parameter *exp0_w, Parameter *exp0_b,
+          Parameter *exp1_w, Parameter *exp1_b, 
+          Parameter *exp2_w, Parameter *exp2_b,
+          Parameter *exp3_w, Parameter *exp3_b,
+          Parameter *gate_w, Parameter *gate_b, 
+          Activation *out) {
 
   Linear_Stream_CUDA(in, 
     gate_w, gate_b, gate_a,
@@ -212,8 +215,8 @@ void MoE(Activation *in, Parameter *exp0_w, Parameter *exp0_b,
 
   Scaling_Stream_CUDA(expert0_a, expert1_a, expert2_a, expert3_a, gate_a);
 
-  /* 5. Accumulate the expert's output:
-    * in [2048] + [2048] + [2048] + [2048] -> out [2048] */
+  // /* 5. Accumulate the expert's output:
+  //   * in [2048] + [2048] + [2048] + [2048] -> out [2048] */
   Add_CUDA(expert0_a, expert1_a, expert2_a, expert3_a, out);
 }
 
@@ -236,23 +239,19 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
     conv2_a, pool2_a, 
     conv3_a, pool3_a);
 
-  Tensor *moe_a_batch = new Tensor({BATCH_SIZE, 2048});
-
   Concat_CUDA(pool0_a, pool1_a, pool2_a, pool3_a, concat_a);
-
-  for (size_t n = 0; n < n_samples; n++) {
-    Tensor *temp_concat_a = new Tensor({4096}, concat_a->gbuf + n * 4096);
   
-    /* in [1024 * 4] -> out [2048] */
-    MoE(temp_concat_a, moe_exp0_w, moe_exp0_b, moe_exp1_w, moe_exp1_b,
-      moe_exp2_w, moe_exp2_b, moe_exp3_w, moe_exp3_b, moe_gate_w,
-      moe_gate_b, moe_a);
-    
-    CHECK_CUDA(cudaMemcpy(moe_a_batch->gbuf+n*2048, moe_a->gbuf, sizeof(float) * 2048, cudaMemcpyDeviceToDevice));
-  }
+  /* in [1024 * 4] -> out [2048] */
+  MoE(concat_a, 
+    moe_exp0_w, moe_exp0_b, 
+    moe_exp1_w, moe_exp1_b,
+    moe_exp2_w, moe_exp2_b, 
+    moe_exp3_w, moe_exp3_b, 
+    moe_gate_w, moe_gate_b,
+    moe_a);
     
   /* in [2048] -> out [1024] */
-  Linear_ReLU_CUDA(moe_a_batch, linear0_w, linear0_b, linear0_a);
+  Linear_ReLU_CUDA(moe_a, linear0_w, linear0_b, linear0_a);
 
   /* in [1024] -> out [512] */
   Linear_ReLU_CUDA(linear0_a, linear1_w, linear1_b, linear1_a);
