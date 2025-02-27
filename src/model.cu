@@ -241,11 +241,6 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
   Concat_CUDA(pool0_a, pool1_a, pool2_a, pool3_a, concat_a);
 
   for (size_t n = 0; n < n_samples; n++) {
-    // Tensor *tmp_pool0_a = new Tensor({1024}, pool0_a->gbuf + n * 1024);
-    // Tensor *tmp_pool1_a = new Tensor({1024}, pool1_a->gbuf + n * 1024);
-    // Tensor *tmp_pool2_a = new Tensor({1024}, pool2_a->gbuf + n * 1024);
-    // Tensor *tmp_pool3_a = new Tensor({1024}, pool3_a->gbuf + n * 1024);
-
     Tensor *temp_concat_a = new Tensor({4096}, concat_a->gbuf + n * 4096);
   
     /* in [1024 * 4] -> out [2048] */
