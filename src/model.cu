@@ -208,7 +208,7 @@ void MoE(Activation *in, Parameter *exp0_w, Parameter *exp0_b,
 
   /* 2. Compute the softmax of the gate logits: in [4] -> out [4] */
   Softmax_CUDA(gate_a);
-  gate_a->toCPU();  // linear에서 scaling도 해줘서 해결할 수 있음 (fusion 쓰면 될듯)
+  gate_a->toCPU();
 
   Scaling_Stream_CUDA(expert0_a, expert1_a, expert2_a, expert3_a, gate_a);
 

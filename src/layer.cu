@@ -16,21 +16,21 @@
   }
 }
 
-//MARK: ReLU_Kernel
-__global__ void ReLU_Kernel(float *inout, size_t N) {
-  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= N) return;
-  inout[i] = inout[i] > 0 ? inout[i] : 0;
-}
+// //MARK: ReLU_Kernel
+// __global__ void ReLU_Kernel(float *inout, size_t N) {
+//   size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+//   if (i >= N) return;
+//   inout[i] = inout[i] > 0 ? inout[i] : 0;
+// }
 
-//MARK: ReLU_CUDA
-void ReLU_CUDA(Tensor *inout) {
-  size_t N = inout->num_elem();
-  dim3 blockDim = 32;
-  dim3 gridDim = (N + 32) / 32;
-  ReLU_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N);
-  CHECK_CUDA(cudaDeviceSynchronize());
-}
+// //MARK: ReLU_CUDA
+// void ReLU_CUDA(Tensor *inout) {
+//   size_t N = inout->num_elem();
+//   dim3 blockDim = 32;
+//   dim3 gridDim = (N + 32) / 32;
+//   ReLU_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N);
+//   CHECK_CUDA(cudaDeviceSynchronize());
+// }
 
 /* Conv1D 
  * @param [in1]  in: [C, s]
@@ -73,60 +73,60 @@ void Conv1D(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   }
 }
 
-//MARK: Conv1D_Kernel
-__global__ void Conv1D_Kernel(float *in, float *w, float *b, float *out, 
-  size_t C, size_t s, size_t OC, size_t K) {
-  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-  size_t os = s - K + 1;
+// //MARK: Conv1D_Kernel
+// __global__ void Conv1D_Kernel(float *in, float *w, float *b, float *out, 
+//   size_t C, size_t s, size_t OC, size_t K) {
+//   size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+//   size_t os = s - K + 1;
   
-  if (i >= OC * os) return;
+//   if (i >= OC * os) return;
 
-  size_t oc = i / os;
-  size_t j = i % os;
-  float val = 0.f;
+//   size_t oc = i / os;
+//   size_t j = i % os;
+//   float val = 0.f;
 
-  for (size_t k = 0; k < C; k++) {
-    for (size_t l = 0; l < K; l++) {
-      val += in[k * s + j + l] * w[oc * C * K + k * K + l];
-    }
-  }
-  out[oc * os + j] = val + b[oc];
-}
+//   for (size_t k = 0; k < C; k++) {
+//     for (size_t l = 0; l < K; l++) {
+//       val += in[k * s + j + l] * w[oc * C * K + k * K + l];
+//     }
+//   }
+//   out[oc * os + j] = val + b[oc];
+// }
 
-//MARK: Conv1D_CUDA
-void Conv1D_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
-  size_t s = in->shape[1];
-  size_t C = in->shape[0];
-  size_t OC = w->shape[0];
-  size_t K = w->shape[2];
-  size_t os = s - K + 1;
+// //MARK: Conv1D_CUDA
+// void Conv1D_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
+//   size_t s = in->shape[1];
+//   size_t C = in->shape[0];
+//   size_t OC = w->shape[0];
+//   size_t K = w->shape[2];
+//   size_t os = s - K + 1;
 
-  dim3 blockDim = 32;
-  dim3 gridDim = ((OC * os) + 32 - 1) / 32;
-  Conv1D_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, C, s, OC, K);
-  CHECK_CUDA(cudaDeviceSynchronize());
-}
+//   dim3 blockDim = 32;
+//   dim3 gridDim = ((OC * os) + 32 - 1) / 32;
+//   Conv1D_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, C, s, OC, K);
+//   CHECK_CUDA(cudaDeviceSynchronize());
+// }
 
-//MARK: C_ReLU_Kernel
-__global__ void Conv1D_ReLU_Kernel(float *in, float *w, float *b, float *out, 
-  size_t C, size_t s, size_t OC, size_t K) {
+// //MARK: C_ReLU_Kernel
+// __global__ void Conv1D_ReLU_Kernel(float *in, float *w, float *b, float *out, 
+//   size_t C, size_t s, size_t OC, size_t K) {
   
-  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-  size_t os = s - K + 1;      // output sequence length
+//   size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+//   size_t os = s - K + 1;      // output sequence length
 
-  if (i >= OC * os) return;
+//   if (i >= OC * os) return;
 
-  size_t oc = i / os;         // output channel
-  size_t j = i % os;          // output sequence idx
-  float val = 0.f;
+//   size_t oc = i / os;         // output channel
+//   size_t j = i % os;          // output sequence idx
+//   float val = 0.f;
 
-  for (size_t k = 0; k < C; k++) {
-    for (size_t l = 0; l < K; l++) {
-      val += in[k * s + j + l] * w[oc * C * K + k * K + l];
-    }
-  }
-  out[oc * os + j] = fmaxf(val + b[oc], 0.0f);
-}
+//   for (size_t k = 0; k < C; k++) {
+//     for (size_t l = 0; l < K; l++) {
+//       val += in[k * s + j + l] * w[oc * C * K + k * K + l];
+//     }
+//   }
+//   out[oc * os + j] = fmaxf(val + b[oc], 0.0f);
+// }
 
 //MARK: C_R_Batch_Kernel
 __global__ void Conv1D_ReLU_Batch_Kernel(float *in, float *w, float *b, float *out, 
@@ -220,17 +220,17 @@ void GetMax(Tensor *in, Tensor *out) {
   }
 }
 
-//MARK: GetMax_Kernel
-__global__ void GetMax_Kernel(float *in, float *out, size_t C, size_t s) {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= C) return;
+// //MARK: GetMax_Kernel
+// __global__ void GetMax_Kernel(float *in, float *out, size_t C, size_t s) {
+//   int i = blockIdx.x * blockDim.x + threadIdx.x;
+//   if (i >= C) return;
 
-  float max_val = in[i * s];
-  for (size_t j = 1; j < s; j++) {
-    max_val = fmaxf(max_val, in[i * s + j]);
-  }
-  out[i] = max_val;
-}
+//   float max_val = in[i * s];
+//   for (size_t j = 1; j < s; j++) {
+//     max_val = fmaxf(max_val, in[i * s + j]);
+//   }
+//   out[i] = max_val;
+// }
 
 //MARK: GetMax_Batch_Kernel
 __global__ void GetMax_Batch_Kernel(float *in, float *out, size_t B, size_t C, size_t s) {
@@ -361,18 +361,6 @@ void Linear(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   }
 }
 
-//MARK: L_Kernel
-__global__ void Linear_Kernel(float *in, float *w, float *b, float *out, size_t N, size_t M) {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= M) return;
-
-  float val = 0.f;
-  for (size_t j = 0; j < N; j++) {
-    val += in[j] * w[i * N + j];
-  }
-  out[i] = val + b[i];
-}
-
 // //MARK: L_CUDA
 // void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
 //   size_t N = in->shape[0];
@@ -443,6 +431,18 @@ __global__ void Linear_Kernel(float *in, float *w, float *b, float *out, size_t 
 //   Linear_ReLU_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, N, M);
 //   CHECK_CUDA(cudaDeviceSynchronize());
 // }
+
+//MARK: L_Kernel
+__global__ void Linear_Kernel(float *in, float *w, float *b, float *out, size_t N, size_t M) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M) return;
+
+  float val = 0.f;
+  for (size_t j = 0; j < N; j++) {
+    val += in[j] * w[i * N + j];
+  }
+  out[i] = val + b[i];
+}
 
 //MARK: L_Batch_Kernel
 __global__ void Linear_Batch_Kernel(float *in, float *w, float *b, float *out, size_t B, size_t N, size_t M) {
