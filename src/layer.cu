@@ -232,24 +232,43 @@ __global__ void GetMax_Kernel(float *in, float *out, size_t C, size_t s) {
   out[i] = max_val;
 }
 
+//MARK: GetMax_Batch_Kernel
+__global__ void GetMax_Batch_Kernel(float *in, float *out, size_t B, size_t C, size_t s) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= B * C) return;
+
+  size_t b = i / C;
+  size_t c = i % C;
+
+  float max_val = in[b * C * s + c * s];
+  for (size_t j = 1; j < s; j++) {
+    max_val = fmaxf(max_val, in[b * C * s + c * s + j]);
+  }
+  out[b * C + c] = max_val;
+}
+
 //MARK: G_Stream_CUDA
 void GetMax_Stream_CUDA(
   Tensor *conv0_a, Tensor *pool0_a, 
   Tensor *conv1_a, Tensor *pool1_a, 
   Tensor *conv2_a, Tensor *pool2_a, 
   Tensor *conv3_a, Tensor *pool3_a){
+  
+  size_t B0 = conv0_a->shape[0];
+  size_t c0_C = conv0_a->shape[1];
+  size_t c0_s = conv0_a->shape[2];
 
-  size_t c0_C = conv0_a->shape[0];
-  size_t c0_s = conv0_a->shape[1];
+  size_t B1 = conv1_a->shape[0];
+  size_t c1_C = conv1_a->shape[1];
+  size_t c1_s = conv1_a->shape[2];
 
-  size_t c1_C = conv1_a->shape[0];
-  size_t c1_s = conv1_a->shape[1];
+  size_t B2 = conv2_a->shape[0];
+  size_t c2_C = conv2_a->shape[1];
+  size_t c2_s = conv2_a->shape[2];
 
-  size_t c2_C = conv2_a->shape[0];
-  size_t c2_s = conv2_a->shape[1];
-
-  size_t c3_C = conv3_a->shape[0];
-  size_t c3_s = conv3_a->shape[1];
+  size_t B3 = conv3_a->shape[0];
+  size_t c3_C = conv3_a->shape[1];
+  size_t c3_s = conv3_a->shape[2];
 
   cudaStream_t s0, s1, s2, s3;
   cudaStreamCreate(&s0);
@@ -259,10 +278,10 @@ void GetMax_Stream_CUDA(
 
   dim3 blockDim = 32;
 
-  GetMax_Kernel<<<(c0_C + 32 - 1) / 32, blockDim, 0, s0>>>(conv0_a->gbuf, pool0_a->gbuf, c0_C, c0_s);
-  GetMax_Kernel<<<(c1_C + 32 - 1) / 32, blockDim, 1, s1>>>(conv1_a->gbuf, pool1_a->gbuf, c1_C, c1_s);
-  GetMax_Kernel<<<(c2_C + 32 - 1) / 32, blockDim, 2, s2>>>(conv2_a->gbuf, pool2_a->gbuf, c2_C, c2_s);
-  GetMax_Kernel<<<(c3_C + 32 - 1) / 32, blockDim, 3, s3>>>(conv3_a->gbuf, pool3_a->gbuf, c3_C, c3_s);
+  GetMax_Batch_Kernel<<<(B0 * c0_C + 32 - 1) / 32, blockDim, 0, s0>>>(conv0_a->gbuf, pool0_a->gbuf, B0, c0_C, c0_s);
+  GetMax_Batch_Kernel<<<(B1 * c1_C + 32 - 1) / 32, blockDim, 0, s1>>>(conv1_a->gbuf, pool1_a->gbuf, B1, c1_C, c1_s);
+  GetMax_Batch_Kernel<<<(B2 * c2_C + 32 - 1) / 32, blockDim, 0, s2>>>(conv2_a->gbuf, pool2_a->gbuf, B2, c2_C, c2_s);
+  GetMax_Batch_Kernel<<<(B3 * c3_C + 32 - 1) / 32, blockDim, 0, s3>>>(conv3_a->gbuf, pool3_a->gbuf, B3, c3_C, c3_s);
   CHECK_CUDA(cudaDeviceSynchronize());
   cudaStreamDestroy(s0);
   cudaStreamDestroy(s1);

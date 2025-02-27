@@ -4,6 +4,8 @@
 #include "model.h"
 //#include <nvToolsExt.h>
 
+#define BATCH_SIZE 16
+
 
 /* [Model Parameters]
  * _w: Weight parameter
@@ -135,17 +137,15 @@ Activation *expert0_a, *expert1_a, *expert2_a, *expert3_a;
 Activation *moe_a;
 Activation *linear0_a, *linear1_a, *linear2_a;
 
-#define BATCH_SIZE 16
-
 void alloc_activations() {
   conv0_a = new Activation({BATCH_SIZE, 1024, SEQ_LEN - 2});
-  pool0_a = new Activation({1024});
+  pool0_a = new Activation({BATCH_SIZE, 1024});
   conv1_a = new Activation({BATCH_SIZE, 1024, SEQ_LEN - 4});
-  pool1_a = new Activation({1024});
+  pool1_a = new Activation({BATCH_SIZE, 1024});
   conv2_a = new Activation({BATCH_SIZE, 1024, SEQ_LEN - 6});
-  pool2_a = new Activation({1024});
+  pool2_a = new Activation({BATCH_SIZE, 1024});
   conv3_a = new Activation({BATCH_SIZE, 1024, SEQ_LEN - 8});
-  pool3_a = new Activation({1024});
+  pool3_a = new Activation({BATCH_SIZE, 1024});
   concat_a = new Activation({4096});
   gate_a = new Activation({4}); 
   topk_val_a = new Activation({2});
@@ -229,24 +229,24 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
     conv1_w, conv1_b, conv1_a,
     conv2_w, conv2_b, conv2_a,
     conv3_w, conv3_b, conv3_a);
+  
+  GetMax_Stream_CUDA(
+    conv0_a, pool0_a, 
+    conv1_a, pool1_a, 
+    conv2_a, pool2_a, 
+    conv3_a, pool3_a);
 
   for (size_t n = 0; n < n_samples; n++) {
-    Tensor *tmp_conv0 = new Tensor({1024, SEQ_LEN - 2}, conv0_a->gbuf + n * 1024 * (SEQ_LEN - 2));
-    Tensor *tmp_conv1 = new Tensor({1024, SEQ_LEN - 4}, conv1_a->gbuf + n * 1024 * (SEQ_LEN - 4));
-    Tensor *tmp_conv2 = new Tensor({1024, SEQ_LEN - 6}, conv2_a->gbuf + n * 1024 * (SEQ_LEN - 6));
-    Tensor *tmp_conv3 = new Tensor({1024, SEQ_LEN - 8}, conv3_a->gbuf + n * 1024 * (SEQ_LEN - 8));
-    
-    GetMax_Stream_CUDA(
-      tmp_conv0, pool0_a, 
-      tmp_conv1, pool1_a, 
-      tmp_conv2, pool2_a, 
-      tmp_conv3, pool3_a);
+    Tensor *tmp_pool0_a = new Tensor({1024}, pool0_a->gbuf + n * 1024);
+    Tensor *tmp_pool1_a = new Tensor({1024}, pool1_a->gbuf + n * 1024);
+    Tensor *tmp_pool2_a = new Tensor({1024}, pool2_a->gbuf + n * 1024);
+    Tensor *tmp_pool3_a = new Tensor({1024}, pool3_a->gbuf + n * 1024);
   
     /* in [1024] +
           [1024] +
           [1024] +
           [1024] -> out [1024 * 4] */
-    Concat_CUDA(pool0_a, pool1_a, pool2_a, pool3_a, concat_a);
+    Concat_CUDA(tmp_pool0_a, tmp_pool1_a, tmp_pool2_a, tmp_pool3_a, concat_a);
   
     /* in [1024 * 4] -> out [2048] */
     MoE(concat_a, moe_exp0_w, moe_exp0_b, moe_exp1_w, moe_exp1_b,
