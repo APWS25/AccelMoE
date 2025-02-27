@@ -16,21 +16,21 @@
   }
 }
 
-//MARK: ReLU_Kernel
-__global__ void ReLU_Kernel(float *inout, size_t N) {
-  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= N) return;
-  inout[i] = inout[i] > 0 ? inout[i] : 0;
-}
+// //MARK: ReLU_Kernel
+// __global__ void ReLU_Kernel(float *inout, size_t N) {
+//   size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+//   if (i >= N) return;
+//   inout[i] = inout[i] > 0 ? inout[i] : 0;
+// }
 
-//MARK: ReLU_CUDA
-void ReLU_CUDA(Tensor *inout) {
-  size_t N = inout->num_elem();
-  dim3 blockDim = 32;
-  dim3 gridDim = (N + 32) / 32;
-  ReLU_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N);
-  CHECK_CUDA(cudaDeviceSynchronize());
-}
+// //MARK: ReLU_CUDA
+// void ReLU_CUDA(Tensor *inout) {
+//   size_t N = inout->num_elem();
+//   dim3 blockDim = 32;
+//   dim3 gridDim = (N + 32) / 32;
+//   ReLU_Kernel<<<gridDim, blockDim>>>(inout->gbuf, N);
+//   CHECK_CUDA(cudaDeviceSynchronize());
+// }
 
 /* Conv1D 
  * @param [in1]  in: [C, s]
@@ -73,60 +73,60 @@ void Conv1D(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   }
 }
 
-//MARK: Conv1D_Kernel
-__global__ void Conv1D_Kernel(float *in, float *w, float *b, float *out, 
-  size_t C, size_t s, size_t OC, size_t K) {
-  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-  size_t os = s - K + 1;
+// //MARK: Conv1D_Kernel
+// __global__ void Conv1D_Kernel(float *in, float *w, float *b, float *out, 
+//   size_t C, size_t s, size_t OC, size_t K) {
+//   size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+//   size_t os = s - K + 1;
   
-  if (i >= OC * os) return;
+//   if (i >= OC * os) return;
 
-  size_t oc = i / os;
-  size_t j = i % os;
-  float val = 0.f;
+//   size_t oc = i / os;
+//   size_t j = i % os;
+//   float val = 0.f;
 
-  for (size_t k = 0; k < C; k++) {
-    for (size_t l = 0; l < K; l++) {
-      val += in[k * s + j + l] * w[oc * C * K + k * K + l];
-    }
-  }
-  out[oc * os + j] = val + b[oc];
-}
+//   for (size_t k = 0; k < C; k++) {
+//     for (size_t l = 0; l < K; l++) {
+//       val += in[k * s + j + l] * w[oc * C * K + k * K + l];
+//     }
+//   }
+//   out[oc * os + j] = val + b[oc];
+// }
 
-//MARK: Conv1D_CUDA
-void Conv1D_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
-  size_t s = in->shape[1];
-  size_t C = in->shape[0];
-  size_t OC = w->shape[0];
-  size_t K = w->shape[2];
-  size_t os = s - K + 1;
+// //MARK: Conv1D_CUDA
+// void Conv1D_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
+//   size_t s = in->shape[1];
+//   size_t C = in->shape[0];
+//   size_t OC = w->shape[0];
+//   size_t K = w->shape[2];
+//   size_t os = s - K + 1;
 
-  dim3 blockDim = 32;
-  dim3 gridDim = ((OC * os) + 32 - 1) / 32;
-  Conv1D_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, C, s, OC, K);
-  CHECK_CUDA(cudaDeviceSynchronize());
-}
+//   dim3 blockDim = 32;
+//   dim3 gridDim = ((OC * os) + 32 - 1) / 32;
+//   Conv1D_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, C, s, OC, K);
+//   CHECK_CUDA(cudaDeviceSynchronize());
+// }
 
-//MARK: C_ReLU_Kernel
-__global__ void Conv1D_ReLU_Kernel(float *in, float *w, float *b, float *out, 
-  size_t C, size_t s, size_t OC, size_t K) {
+// //MARK: C_ReLU_Kernel
+// __global__ void Conv1D_ReLU_Kernel(float *in, float *w, float *b, float *out, 
+//   size_t C, size_t s, size_t OC, size_t K) {
   
-  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-  size_t os = s - K + 1;      // output sequence length
+//   size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+//   size_t os = s - K + 1;      // output sequence length
 
-  if (i >= OC * os) return;
+//   if (i >= OC * os) return;
 
-  size_t oc = i / os;         // output channel
-  size_t j = i % os;          // output sequence idx
-  float val = 0.f;
+//   size_t oc = i / os;         // output channel
+//   size_t j = i % os;          // output sequence idx
+//   float val = 0.f;
 
-  for (size_t k = 0; k < C; k++) {
-    for (size_t l = 0; l < K; l++) {
-      val += in[k * s + j + l] * w[oc * C * K + k * K + l];
-    }
-  }
-  out[oc * os + j] = fmaxf(val + b[oc], 0.0f);
-}
+//   for (size_t k = 0; k < C; k++) {
+//     for (size_t l = 0; l < K; l++) {
+//       val += in[k * s + j + l] * w[oc * C * K + k * K + l];
+//     }
+//   }
+//   out[oc * os + j] = fmaxf(val + b[oc], 0.0f);
+// }
 
 //MARK: C_R_Batch_Kernel
 __global__ void Conv1D_ReLU_Batch_Kernel(float *in, float *w, float *b, float *out, 
@@ -136,20 +136,19 @@ __global__ void Conv1D_ReLU_Batch_Kernel(float *in, float *w, float *b, float *o
   size_t i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= B * OC * os) return;
 
-  size_t n   = i / (OC * os);       // 몇 번째 output
-  size_t rem = i % (OC * os);       // output 내에서 몇 번쨰
+  size_t bi   = i / (OC * os);      // 배치 인덱스
+  size_t li = i % (OC * os);        // 배치 내 인덱스
 
-  size_t oc  = rem / os;            // output channel index
-  size_t j   = rem % os;            // output sequence index
+  size_t oc  = li / os;            // output channel index
+  size_t j   = li % os;            // output sequence index
 
   float val = 0.f;
   for (size_t k = 0; k < C; k++) {
       for (size_t l = 0; l < K; l++) {
-          // 오프셋 증가 (n배)
-          val += in[n * (C * s) + k * s + j + l] * w[oc * C * K + k * K + l];
+          val += in[bi * (C * s) + k * s + j + l] * w[oc * C * K + k * K + l];
       }
   }
-  out[n * (OC * os) + oc * os + j] = fmaxf(val + b[oc], 0.f);
+  out[bi * (OC * os) + oc * os + j] = fmaxf(val + b[oc], 0.f);
 }
 
 //MARK: C_R_Stream_CUDA
@@ -220,31 +219,31 @@ void GetMax(Tensor *in, Tensor *out) {
   }
 }
 
-//MARK: GetMax_Kernel
-__global__ void GetMax_Kernel(float *in, float *out, size_t C, size_t s) {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= C) return;
+// //MARK: GetMax_Kernel
+// __global__ void GetMax_Kernel(float *in, float *out, size_t C, size_t s) {
+//   int i = blockIdx.x * blockDim.x + threadIdx.x;
+//   if (i >= C) return;
 
-  float max_val = in[i * s];
-  for (size_t j = 1; j < s; j++) {
-    max_val = fmaxf(max_val, in[i * s + j]);
-  }
-  out[i] = max_val;
-}
+//   float max_val = in[i * s];
+//   for (size_t j = 1; j < s; j++) {
+//     max_val = fmaxf(max_val, in[i * s + j]);
+//   }
+//   out[i] = max_val;
+// }
 
 //MARK: GetMax_Batch_Kernel
 __global__ void GetMax_Batch_Kernel(float *in, float *out, size_t B, size_t C, size_t s) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= B * C) return;
 
-  size_t b = i / C;
-  size_t c = i % C;
+  size_t bi = i / C;   // 배치 인덱스
+  size_t ci = i % C;   // 배치 내 인덱스 (=채널)
 
-  float max_val = in[b * C * s + c * s];
+  float max_val = in[bi * C * s + ci * s];
   for (size_t j = 1; j < s; j++) {
-    max_val = fmaxf(max_val, in[b * C * s + c * s + j]);
+    max_val = fmaxf(max_val, in[bi * C * s + ci * s + j]);
   }
-  out[b * C + c] = max_val;
+  out[bi * C + ci] = max_val;
 }
 
 //MARK: G_Stream_CUDA
@@ -319,24 +318,51 @@ void Concat(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4,
 }
 
 // MARK: Concat_Kernel
-__global__ void Concat_Kernel(float *in1, float *in2, float *in3, float *in4, float *out, size_t N1, size_t N2, size_t N3, size_t N4) {
+// __global__ void Concat_Kernel(float *in1, float *in2, float *in3, float *in4, float *out, size_t N1, size_t N2, size_t N3, size_t N4) {
+//   int i = blockIdx.x * blockDim.x + threadIdx.x;
+//   if (i < N1) out[i] = in1[i];
+//   else if (i < N1 + N2) out[i] = in2[i - N1];
+//   else if (i < N1 + N2 + N3) out[i] = in3[i - (N1 + N2)];
+//   else if (i < N1 + N2 + N3 + N4) out[i] = in4[i - (N1 + N2 + N3)];
+// }
+
+__global__ void Concat_Batch_Kernel(float *in1, float *in2, float *in3, float *in4, float *out, size_t B, size_t N1, size_t N2, size_t N3, size_t N4) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < N1) out[i] = in1[i];
-  else if (i < N1 + N2) out[i] = in2[i - N1];
-  else if (i < N1 + N2 + N3) out[i] = in3[i - (N1 + N2)];
-  else if (i < N1 + N2 + N3 + N4) out[i] = in4[i - (N1 + N2 + N3)];
+  if (i >= B * (N1 + N2 + N3 + N4)) return;
+
+  if (i <  B * N1){
+    size_t bi = i / N1;
+    size_t li = i % N1;
+    out[bi * (N1 + N2 + N3 + N4) + li] = in1[i];
+  }
+  else if (i < B * (N1 + N2)){
+    size_t bi = (i - (B * N1)) / N2;
+    size_t li = (i - (B * N1)) % N2;
+    out[bi * (N1 + N2 + N3 + N4) + N1 + li] = in2[i - B * N1];
+  }
+  else if (i < B * (N1 + N2 + N3)) {
+    size_t bi = (i - (B * (N1 + N2))) / N3;
+    size_t li = (i - (B * (N1 + N2))) % N3;
+    out[bi * (N1 + N2 + N3 + N4) + N1 + N2 + li] = in3[i - B * (N1 + N2)];
+  }
+  else if (i < B * (N1 + N2 + N3 + N4)){
+    size_t bi = (i - (B * (N1 + N2 + N3))) / N4;
+    size_t li = (i - (B * (N1 + N2 + N3))) % N4;
+    out[bi * (N1 + N2 + N3 + N4) + N1 + N2 + N3 +li] = in4[i - B * (N1 + N2 + N3)];
+  }
 }
 
 //MARK: C_B_CUDA
 void Concat_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4, Tensor *out) {
-  size_t N1 = in1->shape[0];
-  size_t N2 = in2->shape[0];
-  size_t N3 = in3->shape[0];
-  size_t N4 = in4->shape[0];
+  size_t B = in1->shape[0];
+  size_t N1 = in1->shape[1];
+  size_t N2 = in2->shape[1];
+  size_t N3 = in3->shape[1];
+  size_t N4 = in4->shape[1];
 
   dim3 blockDim = 32;
-  dim3 gridDim = (N1 + N2 + N3 + N4 + 32 - 1) / 32;
-  Concat_Kernel<<<gridDim, blockDim>>>(in1->gbuf, in2->gbuf, in3->gbuf, in4->gbuf, out->gbuf, N1, N2, N3, N4);
+  dim3 gridDim = (B * (N1 + N2 + N3 + N4) + 32 - 1) / 32;
+  Concat_Batch_Kernel<<<gridDim, blockDim>>>(in1->gbuf, in2->gbuf, in3->gbuf, in4->gbuf, out->gbuf, B, N1, N2, N3, N4);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
@@ -361,6 +387,77 @@ void Linear(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
   }
 }
 
+// //MARK: L_CUDA
+// void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
+//   size_t N = in->shape[0];
+//   size_t M = w->shape[0];
+
+//   dim3 blockDim = 32;
+//   dim3 gridDim = (M + 32 - 1) / 32;
+//   Linear_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, N, M);
+//   CHECK_CUDA(cudaDeviceSynchronize());
+// }
+
+// //MARK: L_ReLU_Shared_Kernel
+//NOTE: 1 by는 아무런 의미가 없다...
+// __global__ void Linear_ReLU_Shared_Kernel(float *in, float *we, float *b, float *out, int N, int M) {
+//   // 입력: in (1xN), we (M×N; NxM의 전치), 출력: out (1xM)
+//   // 원본 코드의 M, K, N == 여기에서 1, N, M
+//   int j = blockIdx.x * blockDim.x + threadIdx.x;
+//   int gj = blockIdx.x;
+//   if (gj * BLOCK_SIZE >= M) return;
+//   int lj = threadIdx.x;
+
+//   // 쓰레드 블록끼리는 공유 가능한 데이터
+//   __shared__ float inLocal[BLOCK_SIZE];
+//   __shared__ float weLocal[BLOCK_SIZE][BLOCK_SIZE];
+
+//   float val = 0.f;    // 쓰레드마다 개별적으로 저장
+
+//   for (int bk = 0; bk < N; bk += BLOCK_SIZE) {
+//       // step 1: 타일 내의 값 공유 메모리 로드
+//       int in_col_idx = bk + lj;
+//       //int we_col_idx = bk + lj;
+//       inLocal[lj] = (in_col_idx < N) ? in[in_col_idx] : 0.f;
+//       for (int kk = 0; kk < BLOCK_SIZE; ++kk) {
+//         weLocal[lj][kk] = we[j * N + bk + kk]; 
+//       }
+//       __syncthreads();
+//       // 각 스레드가 모두 로드 완료
+
+//       // step 2: 타일 내의 matmul
+//       for (int lk = 0; lk < BLOCK_SIZE; ++lk) {
+//           val += inLocal[lk] * weLocal[lj][lk];
+//       }
+//       __syncthreads();
+//   }
+//   // 각 스레드가 자신이 담당한 output 원소 하나 계산 완료
+//   out[j] = fmaxf(val + b[j], 0.0f);
+// }
+
+// //MARK: L_ReLU_Kernel
+// __global__ void Linear_ReLU_Kernel(float *in, float *w, float *b, float *out, size_t N, size_t M) {
+//   int i = blockIdx.x * blockDim.x + threadIdx.x;
+//   if (i >= M) return;
+
+//   float val = 0.f;
+//   for (size_t j = 0; j < N; j++) {
+//     val += in[j] * w[i * N + j];
+//   }
+//   out[i] = fmaxf(val + b[i], 0.0f);
+// }
+
+//MARK: L_ReLU_CUDA
+// void Linear_ReLU_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
+//   size_t N = in->shape[0];
+//   size_t M = w->shape[0];
+
+//   dim3 blockDim = 32;
+//   dim3 gridDim = (M + 32 - 1) / 32;
+//   Linear_ReLU_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, N, M);
+//   CHECK_CUDA(cudaDeviceSynchronize());
+// }
+
 //MARK: L_Kernel
 __global__ void Linear_Kernel(float *in, float *w, float *b, float *out, size_t N, size_t M) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -373,97 +470,57 @@ __global__ void Linear_Kernel(float *in, float *w, float *b, float *out, size_t 
   out[i] = val + b[i];
 }
 
+//MARK: L_Batch_Kernel
+__global__ void Linear_Batch_Kernel(float *in, float *w, float *b, float *out, size_t B, size_t N, size_t M) {
+  size_t i = blockIdx.x * blockDim.x + threadIdx.x;   // 출력 백터의 전역 인덱스
+  if (i >= B * M) return;
+
+  size_t bi = i / M;      // 배치 인덱스
+  size_t li = i % M;      // 배치 내의 인덱스
+
+  float val = 0.f;
+  for (size_t j = 0; j < N; j++) {
+    val += in[bi * N + j] * w[li * N + j];
+  }
+  out[i] = val + b[li];
+}
+
 //MARK: L_CUDA
 void Linear_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
-  size_t N = in->shape[0];
+  size_t B = in->shape[0];
+  size_t N = in->shape[1];
   size_t M = w->shape[0];
 
   dim3 blockDim = 32;
-  dim3 gridDim = (M + 32 - 1) / 32;
-
-  // dim3 blockDim(32, 32);
-  // dim3 gridDim((N + 32 - 1) / 32, (M + 32 - 1) / 32);
-  Linear_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, N, M);
+  dim3 gridDim = (B * M + 32 - 1) / 32;
+  Linear_Batch_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, B, N, M);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 
-//MARK: L_Batch_Kernel
-__global__ void Linear_Batch_Kernel(float *in, float *w, float *b, float *out, size_t N, size_t M, size_t B) {
-  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  size_t total = B * M;
-  if (idx >= total) return;
+//MARK: L_R_Batch_Kernel
+__global__ void Linear_ReLU_Batch_Kernel(float *in, float *w, float *b, float *out, size_t B, size_t N, size_t M) {
+  size_t i = blockIdx.x * blockDim.x + threadIdx.x;   // 출력 백터의 전역 인덱스
+  if (i >= B * M) return;
 
-  size_t b_idx = idx / M;  // 배치 인덱스
-  size_t i = idx % M;      // 출력 벡터 내의 인덱스
-
-  float val = 0.f;
-  float *in_sample = in + b_idx * N;
-  for (size_t j = 0; j < N; j++) {
-    val += in_sample[j] * w[i * N + j];
-  }
-  out[idx] = val + b[i];
-}
-
-//MARK: L_ReLU_Kernel
-__global__ void Linear_ReLU_Kernel(float *in, float *w, float *b, float *out, size_t N, size_t M) {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= M) return;
+  size_t bi = i / M;      // 배치 인덱스
+  size_t li = i % M;      // 배치 내의 인덱스
 
   float val = 0.f;
   for (size_t j = 0; j < N; j++) {
-    val += in[j] * w[i * N + j];
+    val += in[bi * N + j] * w[li * N + j];
   }
-  out[i] = fmaxf(val + b[i], 0.0f);
+  out[i] = fmaxf(val + b[li], 0.0f);
 }
 
-//MARK: L_ReLU_Shared_Kernel
-//NOTE: 1 by는 아무런 의미가 없다...
-__global__ void Linear_ReLU_Shared_Kernel(float *in, float *we, float *b, float *out, int N, int M) {
-  // 입력: in (1xN), we (M×N; NxM의 전치), 출력: out (1xM)
-  // 원본 코드의 M, K, N == 여기에서 1, N, M
-  int j = blockIdx.x * blockDim.x + threadIdx.x;
-  int gj = blockIdx.x;
-  if (gj * BLOCK_SIZE >= M) return;
-  int lj = threadIdx.x;
-
-  // 쓰레드 블록끼리는 공유 가능한 데이터
-  __shared__ float inLocal[BLOCK_SIZE];
-  __shared__ float weLocal[BLOCK_SIZE][BLOCK_SIZE];
-
-  float val = 0.f;    // 쓰레드마다 개별적으로 저장
-
-  for (int bk = 0; bk < N; bk += BLOCK_SIZE) {
-      // step 1: 타일 내의 값 공유 메모리 로드
-      int in_col_idx = bk + lj;
-      //int we_col_idx = bk + lj;
-      inLocal[lj] = (in_col_idx < N) ? in[in_col_idx] : 0.f;
-      for (int kk = 0; kk < BLOCK_SIZE; ++kk) {
-        weLocal[lj][kk] = we[j * N + bk + kk]; 
-      }
-      __syncthreads();
-      // 각 스레드가 모두 로드 완료
-
-      // step 2: 타일 내의 matmul
-      for (int lk = 0; lk < BLOCK_SIZE; ++lk) {
-          val += inLocal[lk] * weLocal[lj][lk];
-      }
-      __syncthreads();
-  }
-  // 각 스레드가 자신이 담당한 output 원소 하나 계산 완료
-  out[j] = fmaxf(val + b[j], 0.0f);
-}
-
-//MARK: L_ReLU_CUDA
+//MARK: L_R_Batch_CUDA
 void Linear_ReLU_CUDA(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
-  size_t N = in->shape[0];
+  size_t B = in->shape[0];
+  size_t N = in->shape[1];
   size_t M = w->shape[0];
 
   dim3 blockDim = 32;
-  dim3 gridDim = (M + 32 - 1) / 32;
-
-  // dim3 blockDim(32, 32);
-  // dim3 gridDim((N + 32 - 1) / 32, (M + 32 - 1) / 32);
-  Linear_ReLU_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, N, M);
+  dim3 gridDim = (B * M + 32 - 1) / 32;
+  Linear_ReLU_Batch_Kernel<<<gridDim, blockDim>>>(in->gbuf, w->gbuf, b->gbuf, out->gbuf, B, N, M);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
 

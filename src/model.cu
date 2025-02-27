@@ -146,7 +146,7 @@ void alloc_activations() {
   pool2_a = new Activation({BATCH_SIZE, 1024});
   conv3_a = new Activation({BATCH_SIZE, 1024, SEQ_LEN - 8});
   pool3_a = new Activation({BATCH_SIZE, 1024});
-  concat_a = new Activation({4096});
+  concat_a = new Activation({BATCH_SIZE, 4096});
   gate_a = new Activation({4}); 
   topk_val_a = new Activation({2});
   expert0_a = new Activation({2048});
@@ -154,9 +154,9 @@ void alloc_activations() {
   expert2_a = new Activation({2048});
   expert3_a = new Activation({2048});
   moe_a = new Activation({2048});
-  linear0_a = new Activation({1024});
-  linear1_a = new Activation({512});
-  linear2_a = new Activation({2});
+  linear0_a = new Activation({BATCH_SIZE, 1024});
+  linear1_a = new Activation({BATCH_SIZE, 512});
+  linear2_a = new Activation({BATCH_SIZE, 2});
 }
 
 void free_activations() {
@@ -208,7 +208,7 @@ void MoE(Activation *in, Parameter *exp0_w, Parameter *exp0_b,
 
   /* 2. Compute the softmax of the gate logits: in [4] -> out [4] */
   Softmax_CUDA(gate_a);
-  gate_a->toCPU();  // linear에서 scaling도 해줘서 해결할 수 있음 (fusion 쓰면 될듯)
+  gate_a->toCPU();
 
   Scaling_Stream_CUDA(expert0_a, expert1_a, expert2_a, expert3_a, gate_a);
 
@@ -220,8 +220,8 @@ void MoE(Activation *in, Parameter *exp0_w, Parameter *exp0_b,
 /* [Model Computation: Sentiment Analysis Task] */
 void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
   /* Load a sentence from the inputs */
-  Tensor *input = new Tensor({n_samples, 4096, SEQ_LEN}, inputs); // 한번에 전달한다.
-  // Tensor *input = new Tensor({4096, SEQ_LEN}, inputs + n * SEQ_LEN * 4096); 
+  Tensor *input = new Tensor({n_samples, 4096, SEQ_LEN}, inputs);               // 배치 처리용
+  // Tensor *input = new Tensor({4096, SEQ_LEN}, inputs + n * SEQ_LEN * 4096);  // 하나 처리용
 
   Conv1D_ReLU_Stream_CUDA(
     input, 
@@ -236,33 +236,30 @@ void predict_sentiment(float *inputs, float *outputs, size_t n_samples) {
     conv2_a, pool2_a, 
     conv3_a, pool3_a);
 
+  Tensor *moe_a_batch = new Tensor({BATCH_SIZE, 2048});
+
+  Concat_CUDA(pool0_a, pool1_a, pool2_a, pool3_a, concat_a);
+
   for (size_t n = 0; n < n_samples; n++) {
-    Tensor *tmp_pool0_a = new Tensor({1024}, pool0_a->gbuf + n * 1024);
-    Tensor *tmp_pool1_a = new Tensor({1024}, pool1_a->gbuf + n * 1024);
-    Tensor *tmp_pool2_a = new Tensor({1024}, pool2_a->gbuf + n * 1024);
-    Tensor *tmp_pool3_a = new Tensor({1024}, pool3_a->gbuf + n * 1024);
-  
-    /* in [1024] +
-          [1024] +
-          [1024] +
-          [1024] -> out [1024 * 4] */
-    Concat_CUDA(tmp_pool0_a, tmp_pool1_a, tmp_pool2_a, tmp_pool3_a, concat_a);
+    Tensor *temp_concat_a = new Tensor({4096}, concat_a->gbuf + n * 4096);
   
     /* in [1024 * 4] -> out [2048] */
-    MoE(concat_a, moe_exp0_w, moe_exp0_b, moe_exp1_w, moe_exp1_b,
+    MoE(temp_concat_a, moe_exp0_w, moe_exp0_b, moe_exp1_w, moe_exp1_b,
       moe_exp2_w, moe_exp2_b, moe_exp3_w, moe_exp3_b, moe_gate_w,
       moe_gate_b, moe_a);
     
-    /* in [2048] -> out [1024] */
-    Linear_ReLU_CUDA(moe_a, linear0_w, linear0_b, linear0_a);
-  
-    /* in [1024] -> out [512] */
-    Linear_ReLU_CUDA(linear0_a, linear1_w, linear1_b, linear1_a);
-  
-    /* in [512] -> out [2] */
-    Linear_CUDA(linear1_a, linear2_w, linear2_b, linear2_a);
-
-    //CHECK_CUDA(cudaMemcpy(outputs, linear2_a->gbuf, sizeof(float) * (n_samples * 2), cudaMemcpyDeviceToHost));
-    CHECK_CUDA(cudaMemcpy(outputs + n * 2, linear2_a->gbuf, sizeof(float) * 2, cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaMemcpy(moe_a_batch->gbuf+n*2048, moe_a->gbuf, sizeof(float) * 2048, cudaMemcpyDeviceToDevice));
   }
+    
+  /* in [2048] -> out [1024] */
+  Linear_ReLU_CUDA(moe_a_batch, linear0_w, linear0_b, linear0_a);
+
+  /* in [1024] -> out [512] */
+  Linear_ReLU_CUDA(linear0_a, linear1_w, linear1_b, linear1_a);
+
+  /* in [512] -> out [2] */
+  Linear_CUDA(linear1_a, linear2_w, linear2_b, linear2_a);
+
+  CHECK_CUDA(cudaMemcpy(outputs, linear2_a->gbuf, sizeof(float) * (n_samples * 2), cudaMemcpyDeviceToHost));  // 배치 처리용
+  //CHECK_CUDA(cudaMemcpy(outputs + n * 2, linear2_a->gbuf, sizeof(float) * 2, cudaMemcpyDeviceToHost));      // 하나 처리용
 }
