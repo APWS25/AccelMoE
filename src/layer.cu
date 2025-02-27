@@ -136,20 +136,19 @@ __global__ void Conv1D_ReLU_Batch_Kernel(float *in, float *w, float *b, float *o
   size_t i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= B * OC * os) return;
 
-  size_t n   = i / (OC * os);       // 몇 번째 output
-  size_t rem = i % (OC * os);       // output 내에서 몇 번쨰
+  size_t bi   = i / (OC * os);      // 배치 인덱스
+  size_t li = i % (OC * os);        // 배치 내 인덱스
 
-  size_t oc  = rem / os;            // output channel index
-  size_t j   = rem % os;            // output sequence index
+  size_t oc  = li / os;            // output channel index
+  size_t j   = li % os;            // output sequence index
 
   float val = 0.f;
   for (size_t k = 0; k < C; k++) {
       for (size_t l = 0; l < K; l++) {
-          // 오프셋 증가 (n배)
-          val += in[n * (C * s) + k * s + j + l] * w[oc * C * K + k * K + l];
+          val += in[bi * (C * s) + k * s + j + l] * w[oc * C * K + k * K + l];
       }
   }
-  out[n * (OC * os) + oc * os + j] = fmaxf(val + b[oc], 0.f);
+  out[bi * (OC * os) + oc * os + j] = fmaxf(val + b[oc], 0.f);
 }
 
 //MARK: C_R_Stream_CUDA
@@ -237,14 +236,14 @@ __global__ void GetMax_Batch_Kernel(float *in, float *out, size_t B, size_t C, s
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= B * C) return;
 
-  size_t b = i / C;
-  size_t c = i % C;
+  size_t bi = i / C;   // 배치 인덱스
+  size_t ci = i % C;   // 배치 내 인덱스 (=채널)
 
-  float max_val = in[b * C * s + c * s];
+  float max_val = in[bi * C * s + ci * s];
   for (size_t j = 1; j < s; j++) {
-    max_val = fmaxf(max_val, in[b * C * s + c * s + j]);
+    max_val = fmaxf(max_val, in[bi * C * s + ci * s + j]);
   }
-  out[b * C + c] = max_val;
+  out[bi * C + ci] = max_val;
 }
 
 //MARK: G_Stream_CUDA
