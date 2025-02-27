@@ -2,7 +2,7 @@
 #include "float.h"
 //#include <nvToolsExt.h>
 
-#define BLOCK_SIZE 32
+#define BLOCK_SIZE 128
 
 /* ReLU
  * @param [in & out] inout: [N]
@@ -183,12 +183,12 @@ void Conv1D_ReLU_Stream_CUDA(Tensor *in,
   cudaStreamCreate(&s2);
   cudaStreamCreate(&s3);
 
-  dim3 blockDim = 32;
+  dim3 blockDim = BLOCK_SIZE;
 
-  Conv1D_ReLU_Batch_Kernel<<<(((B * c0_OC * c0_os) + 32 - 1) / 32), blockDim, 0, s0>>>(in->gbuf, conv0_w->gbuf, conv0_b->gbuf, conv0_a->gbuf, B, C, s, c0_OC, c0_K);
-  Conv1D_ReLU_Batch_Kernel<<<(((B * c1_OC * c1_os) + 32 - 1) / 32), blockDim, 0, s1>>>(in->gbuf, conv1_w->gbuf, conv1_b->gbuf, conv1_a->gbuf, B, C, s, c1_OC, c1_K);
-  Conv1D_ReLU_Batch_Kernel<<<(((B * c2_OC * c2_os) + 32 - 1) / 32), blockDim, 0, s2>>>(in->gbuf, conv2_w->gbuf, conv2_b->gbuf, conv2_a->gbuf, B, C, s, c2_OC, c2_K);
-  Conv1D_ReLU_Batch_Kernel<<<(((B * c3_OC * c3_os) + 32 - 1) / 32), blockDim, 0, s3>>>(in->gbuf, conv3_w->gbuf, conv3_b->gbuf, conv3_a->gbuf, B, C, s, c3_OC, c3_K);
+  Conv1D_ReLU_Batch_Kernel<<<(((B * c0_OC * c0_os) + BLOCK_SIZE - 1) / BLOCK_SIZE), blockDim, 0, s0>>>(in->gbuf, conv0_w->gbuf, conv0_b->gbuf, conv0_a->gbuf, B, C, s, c0_OC, c0_K);
+  Conv1D_ReLU_Batch_Kernel<<<(((B * c1_OC * c1_os) + BLOCK_SIZE - 1) / BLOCK_SIZE), blockDim, 0, s1>>>(in->gbuf, conv1_w->gbuf, conv1_b->gbuf, conv1_a->gbuf, B, C, s, c1_OC, c1_K);
+  Conv1D_ReLU_Batch_Kernel<<<(((B * c2_OC * c2_os) + BLOCK_SIZE - 1) / BLOCK_SIZE), blockDim, 0, s2>>>(in->gbuf, conv2_w->gbuf, conv2_b->gbuf, conv2_a->gbuf, B, C, s, c2_OC, c2_K);
+  Conv1D_ReLU_Batch_Kernel<<<(((B * c3_OC * c3_os) + BLOCK_SIZE - 1) / BLOCK_SIZE), blockDim, 0, s3>>>(in->gbuf, conv3_w->gbuf, conv3_b->gbuf, conv3_a->gbuf, B, C, s, c3_OC, c3_K);
   CHECK_CUDA(cudaDeviceSynchronize());
   cudaStreamDestroy(s0);
   cudaStreamDestroy(s1);
@@ -275,12 +275,12 @@ void GetMax_Stream_CUDA(
   cudaStreamCreate(&s2);
   cudaStreamCreate(&s3);
 
-  dim3 blockDim = 32;
+  dim3 blockDim = BLOCK_SIZE;
 
-  GetMax_Batch_Kernel<<<(B0 * c0_C + 32 - 1) / 32, blockDim, 0, s0>>>(conv0_a->gbuf, pool0_a->gbuf, B0, c0_C, c0_s);
-  GetMax_Batch_Kernel<<<(B1 * c1_C + 32 - 1) / 32, blockDim, 0, s1>>>(conv1_a->gbuf, pool1_a->gbuf, B1, c1_C, c1_s);
-  GetMax_Batch_Kernel<<<(B2 * c2_C + 32 - 1) / 32, blockDim, 0, s2>>>(conv2_a->gbuf, pool2_a->gbuf, B2, c2_C, c2_s);
-  GetMax_Batch_Kernel<<<(B3 * c3_C + 32 - 1) / 32, blockDim, 0, s3>>>(conv3_a->gbuf, pool3_a->gbuf, B3, c3_C, c3_s);
+  GetMax_Batch_Kernel<<<(B0 * c0_C + BLOCK_SIZE - 1) / BLOCK_SIZE, blockDim, 0, s0>>>(conv0_a->gbuf, pool0_a->gbuf, B0, c0_C, c0_s);
+  GetMax_Batch_Kernel<<<(B1 * c1_C + BLOCK_SIZE - 1) / BLOCK_SIZE, blockDim, 0, s1>>>(conv1_a->gbuf, pool1_a->gbuf, B1, c1_C, c1_s);
+  GetMax_Batch_Kernel<<<(B2 * c2_C + BLOCK_SIZE - 1) / BLOCK_SIZE, blockDim, 0, s2>>>(conv2_a->gbuf, pool2_a->gbuf, B2, c2_C, c2_s);
+  GetMax_Batch_Kernel<<<(B3 * c3_C + BLOCK_SIZE - 1) / BLOCK_SIZE, blockDim, 0, s3>>>(conv3_a->gbuf, pool3_a->gbuf, B3, c3_C, c3_s);
   CHECK_CUDA(cudaDeviceSynchronize());
   cudaStreamDestroy(s0);
   cudaStreamDestroy(s1);
@@ -360,8 +360,8 @@ void Concat_CUDA(Tensor *in1, Tensor *in2, Tensor *in3, Tensor *in4, Tensor *out
   size_t N3 = in3->shape[1];
   size_t N4 = in4->shape[1];
 
-  dim3 blockDim = 32;
-  dim3 gridDim = (B * (N1 + N2 + N3 + N4) + 32 - 1) / 32;
+  dim3 blockDim = BLOCK_SIZE;
+  dim3 gridDim = (B * (N1 + N2 + N3 + N4) + BLOCK_SIZE - 1) / BLOCK_SIZE;
   Concat_Batch_Kernel<<<gridDim, blockDim>>>(in1->gbuf, in2->gbuf, in3->gbuf, in4->gbuf, out->gbuf, B, N1, N2, N3, N4);
   CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -458,6 +458,7 @@ void Linear(Tensor *in, Tensor *w, Tensor *b, Tensor *out) {
 //   CHECK_CUDA(cudaDeviceSynchronize());
 // }
 
+//NOTE: 여기 아래부터는 blockDim = 32가 더 빠름
 //MARK: L_Kernel
 __global__ void Linear_Kernel(float *in, float *w, float *b, float *out, size_t N, size_t M) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -541,7 +542,7 @@ void Linear_Stream_CUDA(Tensor *in,
 
   size_t B = in->shape[0];
   size_t N = in->shape[1];
-  // size_t M는 activation이 다 다름
+  //NOTE: size_t M는 activation이 다 다름
 
   dim3 blockDim = 32;
   Linear_Batch_Kernel<<<(B * gate_a->shape[1] + 32 - 1) / 32, blockDim, 0, s0>>>(in->gbuf, gate_w->gbuf, gate_b->gbuf, gate_a->gbuf, B, N, gate_w->shape[0]);
@@ -607,9 +608,7 @@ __global__ void Softmax_Batch_Kernel(float *inout, size_t B, size_t N) {
   if (idx >= B * N) return;
 
   size_t bi = idx / N;      // 배치 인덱스
-  //size_t li = idx % N;      // 배치 내의 인덱스
 
-  //아래의 코드를 바꿔줘.
   float max_val = -INFINITY;
   for (size_t i = 0; i < N; i++) {
     max_val = fmaxf(max_val, inout[bi * N + i]);
@@ -688,7 +687,6 @@ void Scaling_Stream_CUDA(Tensor *expert0_a, Tensor *expert1_a, Tensor *expert2_a
   dim3 blockDim = 32;
   dim3 gridDim = (B * expert0_a->shape[1] + 32 - 1) / 32;
 
-  // 여기서 원래 gate_a->buf[0]를 하면돼었었는데 이제는 배치가 추가되어서 그렇게 못함. 어떻게 해야 하지?
   Scaling_Batch_Kernel<<<gridDim, blockDim, 0, s0>>>(expert0_a->gbuf, B, expert0_a->shape[1], 4, gate_a->buf+0);
   Scaling_Batch_Kernel<<<gridDim, blockDim, 0, s1>>>(expert1_a->gbuf, B, expert1_a->shape[1], 4, gate_a->buf+1);
   Scaling_Batch_Kernel<<<gridDim, blockDim, 0, s2>>>(expert2_a->gbuf, B, expert2_a->shape[1], 4, gate_a->buf+2);
