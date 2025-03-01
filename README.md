@@ -1,5 +1,5 @@
 # AccelMoE: Accelerated Mixture-of-Expert model 
-AccelMoE is a project that optimizes a CPU-based mixture-of-experts architecture into GPU-based accelerated code. The project utilizes CUDA kernel programming to effectively execute computations on the GPU.
+AccelMoE is a project that optimizes a CPU-based mixture-of-experts architecture into GPU-based accelerated code. The project utilizes CUDA kernel programming to effectively execute computations on the GPU. The project was awarded **3rd Place** at the Accelerator Programming School competition.
 
 > [!NOTE]
 > This work is a project conducted as part of the Accelerator Programming School at Seoul National University.
