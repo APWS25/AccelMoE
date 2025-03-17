@@ -5,7 +5,8 @@ AccelMoE is a project that optimizes a CPU-based mixture-of-experts architecture
 > This work is a project conducted as part of the Accelerator Programming School at Seoul National University.
 
 ## Optimization Overview
-![Archeture](https://github.com/user-attachments/assets/8a59b9d1-f034-477d-92cd-a617eb86a734)
+![Archeture](https://github.com/user-attachments/assets/d47bdb8a-34e3-4c66-b8c4-47382f1de415)
+
 
 ## Optimization Techniques
 - GPU formatting using CUDA kernel programming
